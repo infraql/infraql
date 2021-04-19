@@ -1,0 +1,232 @@
+name: Go
+
+on:
+  push:
+    branches:
+      - master
+      - develop
+  pull_request:
+    branches:
+      - master
+      - develop
+
+env:
+  GOGETCMD: "go get -v -t -d ./..."
+  GOTESTCMD: "go test -v ./..."
+  TESTSCRIPT: "test/python/main.py"
+
+jobs:
+
+  winbuild:
+    name: Windows Build
+    runs-on: windows-latest
+    steps:
+    - name: Set up Go 1.x
+      uses: actions/setup-go@v2
+      with:
+        go-version: ^1.13
+      id: go
+
+    - name: Check out code into the Go module directory
+      uses: actions/checkout@v2
+
+    - name: Get dependencies
+      run: $GOGETCMD
+      env:
+        GOGETCMD: ${{env.GOGETCMD}}
+
+    - name: Generate Build Flags and Build
+      env:
+        BUILDCOMMITSHA: ${{github.sha}}
+        BUILDBRANCH: ${{github.ref}}
+        BUILDPLATFORM: ${{runner.os}}
+        BUILDPATCHVERSION: ${{github.run_number}}
+      run: |
+        $Version = convertfrom-stringdata (get-content ./version.txt -raw)
+        $BuildMajorVersion = $Version.'MajorVersion'
+        $BuildMinorVersion = $Version.'MinorVersion'
+        if("$env:BUILDBRANCH".EndsWith('master')) {
+          $BuildPatchVersion = $env:BUILDPATCHVERSION
+        }else {
+          $BuildPatchVersion = $env:BUILDPATCHVERSION + "-prerelease"
+        }
+        $BuildCommitSHA = $env:BUILDCOMMITSHA
+        $BuildShortCommitSHA = "$BuildCommitSHA".Substring(0,6)
+        $BuildDate = (Get-Date -UFormat "%a %b %e %H:%M:%S UTC %Y").ToString()
+        $BuildPlatform = $env:BUILDPLATFORM		
+            
+        Write-Output $BuildMajorVersion
+        Write-Output $BuildMinorVersion
+        Write-Output $BuildPatchVersion
+        Write-Output $BuildCommitSHA
+        Write-Output $BuildShortCommitSHA
+        Write-Output $BuildDate
+        Write-Output $BuildPlatform
+        
+        go build -x -v -ldflags "-X infraql/internal/iql/cmd.BuildMajorVersion=$BuildMajorVersion `
+          -X infraql/internal/iql/cmd.BuildMinorVersion=$BuildMinorVersion `
+          -X infraql/internal/iql/cmd.BuildPatchVersion=$BuildPatchVersion `
+          -X infraql/internal/iql/cmd.BuildCommitSHA=$BuildCommitSHA `
+          -X infraql/internal/iql/cmd.BuildShortCommitSHA=$BuildShortCommitSHA `
+          -X 'infraql/internal/iql/cmd.BuildDate=$BuildDate' `
+          -X infraql/internal/iql/cmd.BuildPlatform=$BuildPlatform" `
+          -o build/ ./...
+
+    - name: Test
+      if: success()
+      run: $GOTESTCMD
+      env:
+        GOTESTCMD: ${{env.GOTESTCMD}}
+
+    - name: Test Script
+      if: success()
+      run: python.exe test/python/main.py
+
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v2
+      if: success()
+      with:
+        name: infraql_windows_amd64
+        path: D:/a/infraql/infraql/build/infraql.exe
+
+  linuxbuild:
+    name: Linux Build
+    runs-on: ubuntu-latest
+    steps:
+    - name: Set up Go 1.x
+      uses: actions/setup-go@v2
+      with:
+        go-version: ^1.13
+      id: go
+
+    - name: Check out code into the Go module directory
+      uses: actions/checkout@v2
+      
+    - name: Get dependencies
+      run: $GOGETCMD
+      env:
+        GOGETCMD: ${{env.GOGETCMD}}
+
+    - name: Generate Build Flags and Build
+      env:
+        BUILDCOMMITSHA: ${{github.sha}}
+        BUILDBRANCH: ${{github.ref}}
+        BUILDPLATFORM: ${{runner.os}}
+        BUILDPATCHVERSION: ${{github.run_number}}
+      run: |
+        source version.txt
+        BUILDMAJORVERSION=$MajorVersion
+        BUILDMINORVERSION=$MinorVersion
+        if [[ ! "$BUILDBRANCH" == *master ]]
+          then
+          BUILDPATCHVERSION="${BUILDPATCHVERSION}-prerelease"
+        fi
+        BUILDSHORTCOMMITSHA=$(echo $BUILDCOMMITSHA | cut -c 1-7)
+        BUILDDATE=$(date)
+        echo "BUILDMAJORVERSION: ${BUILDMAJORVERSION}"
+        echo "BUILDMINORVERSION: ${BUILDMINORVERSION}"
+        echo "BUILDPATCHVERSION: ${BUILDPATCHVERSION}"
+        echo "BUILDBRANCH: ${BUILDBRANCH}"
+        echo "BUILDCOMMITSHA: ${BUILDCOMMITSHA}"
+        echo "BUILDSHORTCOMMITSHA: ${BUILDSHORTCOMMITSHA}"
+        echo "BUILDDATE: ${BUILDDATE}"
+        echo "BUILDPLATFORM: ${BUILDPLATFORM}"
+
+        go build -x -v -ldflags "-X infraql/internal/iql/cmd.BuildMajorVersion=$BUILDMAJORVERSION \
+        -X infraql/internal/iql/cmd.BuildMinorVersion=$BUILDMINORVERSION \
+        -X infraql/internal/iql/cmd.BuildPatchVersion=$BUILDPATCHVERSION \
+        -X infraql/internal/iql/cmd.BuildCommitSHA=$BUILDCOMMITSHA \
+        -X infraql/internal/iql/cmd.BuildShortCommitSHA=$BUILDSHORTCOMMITSHA \
+        -X \"infraql/internal/iql/cmd.BuildDate=$BUILDDATE\" \
+        -X infraql/internal/iql/cmd.BuildPlatform=$BUILDPLATFORM" \
+        -o build/ ./...
+      
+    - name: Test
+      if: success()
+      run: $GOTESTCMD
+      env:
+        GOTESTCMD: ${{env.GOTESTCMD}}
+
+    - name: Test Script
+      if: success()
+      run: python3 $TESTSCRIPT
+      env:
+        TESTSCRIPT: ${{env.TESTSCRIPT}}
+
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v2
+      if: success()
+      with:
+        name: infraql_linux_amd64
+        path: build/infraql
+
+  macosbuild:
+    name: MacOS Build
+    runs-on: macos-latest
+    steps:
+    - name: Set up Go 1.x
+      uses: actions/setup-go@v2
+      with:
+        go-version: ^1.13
+      id: go
+
+    - name: Check out code into the Go module directory
+      uses: actions/checkout@v2
+
+    - name: Get dependencies
+      run: $GOGETCMD
+      env:
+        GOGETCMD: ${{env.GOGETCMD}}
+
+    - name: Generate Build Flags and Build
+      env:
+        BUILDCOMMITSHA: ${{github.sha}}
+        BUILDBRANCH: ${{github.ref}}
+        BUILDPLATFORM: ${{runner.os}}
+        BUILDPATCHVERSION: ${{github.run_number}}
+      run: |
+        source version.txt
+        BUILDMAJORVERSION=$MajorVersion
+        BUILDMINORVERSION=$MinorVersion
+        if [[ ! "$BUILDBRANCH" == *master ]]
+          then
+          BUILDPATCHVERSION="${BUILDPATCHVERSION}-prerelease"
+        fi
+        BUILDSHORTCOMMITSHA=$(echo $BUILDCOMMITSHA | cut -c 1-7)
+        BUILDDATE=$(date)
+        echo "BUILDMAJORVERSION: ${BUILDMAJORVERSION}"
+        echo "BUILDMINORVERSION: ${BUILDMINORVERSION}"
+        echo "BUILDPATCHVERSION: ${BUILDPATCHVERSION}"
+        echo "BUILDBRANCH: ${BUILDBRANCH}"
+        echo "BUILDCOMMITSHA: ${BUILDCOMMITSHA}"
+        echo "BUILDSHORTCOMMITSHA: ${BUILDSHORTCOMMITSHA}"
+        echo "BUILDDATE: ${BUILDDATE}"
+        echo "BUILDPLATFORM: ${BUILDPLATFORM}"
+
+        go build -x -v -ldflags "-X infraql/internal/iql/cmd.BuildMajorVersion=$BUILDMAJORVERSION \
+        -X infraql/internal/iql/cmd.BuildMinorVersion=$BUILDMINORVERSION \
+        -X infraql/internal/iql/cmd.BuildPatchVersion=$BUILDPATCHVERSION \
+        -X infraql/internal/iql/cmd.BuildCommitSHA=$BUILDCOMMITSHA \
+        -X infraql/internal/iql/cmd.BuildShortCommitSHA=$BUILDSHORTCOMMITSHA \
+        -X \"infraql/internal/iql/cmd.BuildDate=$BUILDDATE\" \
+        -X infraql/internal/iql/cmd.BuildPlatform=$BUILDPLATFORM" \
+        -o build/ ./...
+
+    - name: Test
+      if: success()
+      run: $GOTESTCMD
+      env:
+        GOTESTCMD: ${{env.GOTESTCMD}}
+        
+    - name: Test Script
+      if: success()
+      run: python3 $TESTSCRIPT
+      env:
+        TESTSCRIPT: ${{env.TESTSCRIPT}}
+
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v2
+      if: success()
+      with:
+        name: infraql_darwin_amd64
+        path: build/infraql

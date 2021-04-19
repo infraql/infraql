@@ -1,0 +1,5 @@
+loglevel = error
+verbose = true
+offline = true
+output = table
+apirequesttimeout = 30
