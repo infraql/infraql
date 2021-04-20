@@ -1,18 +1,16 @@
 <!-- language: lang-none -->
 
+![Platforms](https://img.shields.io/badge/platform-windows%20macos%20linux-brightgreen)
 ![Go](https://github.com/infraql/infraql/workflows/Go/badge.svg)
-    
-      _____          __                ____   _      
-     |_   _|        / _|              / __ \ | |     
-       | |   _ __  | |_  _ __  __ _  | |  | || |     
-       | |  | '_ \ |  _|| '__|/ _` | | |  | || |     
-      _| |_ | | | || |  | |  | (_| | | |__| || |____ 
-     |_____||_| |_||_|  |_|   \__,_|  \___\_\|______|
-                                                 
-                                                 
-# InfraQL - Infrastructure as SQL
+![License](https://img.shields.io/github/license/infraql/infraql)
+![Lines](https://img.shields.io/tokei/lines/github/infraql/infraql)  
+[![InfraQL](https://docs.infraql.io/img/infraql-banner.png)](https://infraql.io/)  
 
-----
+
+# Deploy, Manage and Query Cloud Infrastructure using SQL
+
+[[Documentation](https://docs.infraql.io/)]  [[Developer Guide](https://github.com/infraql/infraql/blob/develop/developer_guide.md)]
+
 ## Cloud infrastructure coding using SQL
 
 > InfraQL allows you to create, modify and query the state of services and resources across all three major public cloud providers (Google, AWS and Azure) using a common, widely known DSL...SQL.
