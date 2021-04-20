@@ -11,11 +11,13 @@ import (
 	"infraql/internal/iql/dto"
 	"infraql/internal/iql/handler"
 	"infraql/internal/iql/httpexec"
+	"infraql/internal/iql/httpmiddleware"
 	"infraql/internal/iql/iqlmodel"
 	"infraql/internal/iql/iqlutil"
 	"infraql/internal/iql/metadata"
 	"infraql/internal/iql/metadatavisitors"
 	"infraql/internal/iql/plan"
+	"infraql/internal/iql/primitivebuilder"
 	"infraql/internal/iql/provider"
 	"infraql/internal/iql/relational"
 	"infraql/internal/iql/sqltypeutil"
@@ -24,121 +26,22 @@ import (
 	"infraql/internal/pkg/prettyprint"
 
 	log "github.com/sirupsen/logrus"
-	
+
 	"vitess.io/vitess/go/sqltypes"
 	"vitess.io/vitess/go/vt/sqlparser"
 )
 
-type tblMap map[sqlparser.SQLNode]taxonomy.ExtendedTableMetadata
-
-func (tm tblMap) GetTable(node sqlparser.SQLNode) (taxonomy.ExtendedTableMetadata, error) {
-	tbl, ok := tm[node]
-	if !ok {
-		return taxonomy.ExtendedTableMetadata{}, fmt.Errorf("could not locate table metadata for AST node: %v", node)
-	}
-	return tbl, nil
+type primitiveGenerator struct {
+	PrimitiveBuilder *primitivebuilder.PrimitiveBuilder
 }
 
-type primitiveBuilder struct {
-	await bool
-
-	ast sqlparser.Statement
-
-	builder builder
-
-	// needed globally for non-heirarchy queries, such as "SHOW SERVICES FROM google;"
-	prov                 provider.IProvider
-	tableFilter          func(iqlmodel.ITable) (iqlmodel.ITable, error)
-	colsVisited          map[string]bool
-	likeAbleColumns      []string
-
-	// per table	
-	tables tblMap
-	
-	
-
-	// per query
-	columnOrder         []string
-	commentDirectives   sqlparser.CommentDirectives
-
-	// per query -- SELECT only
-	insertValOnlyRows   map[int]map[int]interface{}
-	valOnlyCols         map[int]map[string]interface{}
-
-	// per query -- SHOW INSERT only
-	insertSchemaMap           map[string]metadata.Schema
-	
-	// TODO: universally retire in favour of builder, which returns plan.IPrimitive
-	primitive           plan.IPrimitive
-	
-}
-
-type HTTPRestPrimitive struct {
-	Provider provider.IProvider
-	Executor func(pc plan.IPrimitiveCtx) dto.ExecutorOutput
-}
-
-type MetaDataPrimitive struct {
-	Provider provider.IProvider
-	Executor func(pc plan.IPrimitiveCtx) dto.ExecutorOutput
-}
-
-type LocalPrimitive struct {
-	Executor func(pc plan.IPrimitiveCtx) dto.ExecutorOutput
-}
-
-func (pr *HTTPRestPrimitive) Execute(pc plan.IPrimitiveCtx) dto.ExecutorOutput {
-	if pr.Executor != nil {
-		return pr.Executor(pc)
-	}
-	return dto.NewExecutorOutput(nil, nil, nil, nil)
-}
-
-func (pr *MetaDataPrimitive) Execute(pc plan.IPrimitiveCtx) dto.ExecutorOutput {
-	if pr.Executor != nil {
-		return pr.Executor(pc)
-	}
-	return dto.NewExecutorOutput(nil, nil, nil, nil)
-}
-
-func (pr *LocalPrimitive) Execute(pc plan.IPrimitiveCtx) dto.ExecutorOutput {
-	if pr.Executor != nil {
-		return pr.Executor(pc)
-	}
-	return dto.NewExecutorOutput(nil, nil, nil, nil)
-}
-
-func NewMetaDataPrimitive(provider provider.IProvider, executor func(pc plan.IPrimitiveCtx) dto.ExecutorOutput) *MetaDataPrimitive {
-	return &MetaDataPrimitive{
-		Provider: provider,
-		Executor: executor,
+func newPrimitiveGenerator(ast sqlparser.Statement) *primitiveGenerator {
+	return &primitiveGenerator{
+		PrimitiveBuilder: primitivebuilder.NewPrimitiveBuilder(ast),
 	}
 }
 
-func NewHTTPRestPrimitive(provider provider.IProvider, executor func(pc plan.IPrimitiveCtx) dto.ExecutorOutput) *HTTPRestPrimitive {
-	return &HTTPRestPrimitive{
-		Provider: provider,
-		Executor: executor,
-	}
-}
-
-func NewLocalPrimitive(executor func(pc plan.IPrimitiveCtx) dto.ExecutorOutput) *LocalPrimitive {
-	return &LocalPrimitive{
-		Executor: executor,
-	}
-}
-
-func newPrimitiveBuilder(ast sqlparser.Statement) *primitiveBuilder {
-	return &primitiveBuilder{
-		ast:                ast,
-		tables:             make(map[sqlparser.SQLNode]taxonomy.ExtendedTableMetadata),
-		valOnlyCols:        make(map[int]map[string]interface{}),
-		insertValOnlyRows:  make(map[int]map[int]interface{}),
-		colsVisited:        make(map[string]bool),
-	}
-}
-
-func (pb *primitiveBuilder) comparisonExprToFilterFunc(table iqlmodel.ITable, parentNode *sqlparser.Show, expr *sqlparser.ComparisonExpr) (func(iqlmodel.ITable) (iqlmodel.ITable, error), error) {
+func (pb *primitiveGenerator) comparisonExprToFilterFunc(table iqlmodel.ITable, parentNode *sqlparser.Show, expr *sqlparser.ComparisonExpr) (func(iqlmodel.ITable) (iqlmodel.ITable, error), error) {
 	qualifiedName, ok := expr.Left.(*sqlparser.ColName)
 	if !ok {
 		return nil, fmt.Errorf("unexpected: %v", sqlparser.String(expr))
@@ -187,7 +90,7 @@ func (pb *primitiveBuilder) comparisonExprToFilterFunc(table iqlmodel.ITable, pa
 			return nil, err
 		}
 		retVal = relational.ConstructLikePredicateFilter(colName, likeRegexp, expr.Operator == sqlparser.NotLikeStr)
-		pb.colsVisited[colName] = true
+		pb.PrimitiveBuilder.SetColVisited(colName, true)
 		return retVal, nil
 	}
 	operatorPredicate, preErr := relational.GetOperatorPredicate(expr.Operator)
@@ -196,7 +99,7 @@ func (pb *primitiveBuilder) comparisonExprToFilterFunc(table iqlmodel.ITable, pa
 		return nil, preErr
 	}
 
-	pb.colsVisited[colName] = true
+	pb.PrimitiveBuilder.SetColVisited(colName, true)
 	return relational.ConstructTablePredicateFilter(colName, resolved, operatorPredicate), nil
 }
 
@@ -279,7 +182,7 @@ func filterMethods(methods map[string]metadata.Method, tableFilter func(iqlmodel
 	return methods, err
 }
 
-func (pb *primitiveBuilder) inferProviderForShow(node *sqlparser.Show, handlerCtx *handler.HandlerContext) error {
+func (pb *primitiveGenerator) inferProviderForShow(node *sqlparser.Show, handlerCtx *handler.HandlerContext) error {
 	nodeTypeUpperCase := strings.ToUpper(node.Type)
 	switch nodeTypeUpperCase {
 	case "AUTH":
@@ -287,20 +190,20 @@ func (pb *primitiveBuilder) inferProviderForShow(node *sqlparser.Show, handlerCt
 		if err != nil {
 			return err
 		}
-		pb.prov = prov
+		pb.PrimitiveBuilder.SetProvider(prov)
 	case "INSERT":
 		prov, err := handlerCtx.GetProvider(node.OnTable.QualifierSecond.GetRawVal())
 		if err != nil {
 			return err
 		}
-		pb.prov = prov
-		
+		pb.PrimitiveBuilder.SetProvider(prov)
+
 	case "METHODS":
 		prov, err := handlerCtx.GetProvider(node.OnTable.QualifierSecond.GetRawVal())
 		if err != nil {
 			return err
 		}
-		pb.prov = prov
+		pb.PrimitiveBuilder.SetProvider(prov)
 	case "PROVIDERS":
 		// no provider, might create some dummy object dunno
 	case "RESOURCES":
@@ -308,20 +211,20 @@ func (pb *primitiveBuilder) inferProviderForShow(node *sqlparser.Show, handlerCt
 		if err != nil {
 			return err
 		}
-		pb.prov = prov
+		pb.PrimitiveBuilder.SetProvider(prov)
 	case "SERVICES":
 		prov, err := handlerCtx.GetProvider(node.OnTable.Name.GetRawVal())
 		if err != nil {
 			return err
 		}
-		pb.prov = prov
+		pb.PrimitiveBuilder.SetProvider(prov)
 	default:
 		return fmt.Errorf("unsuported node type: '%s'", node.Type)
 	}
 	return nil
 }
 
-func (pb *primitiveBuilder) showInstructionExecutor(node *sqlparser.Show, handlerCtx *handler.HandlerContext) dto.ExecutorOutput {
+func (pb *primitiveGenerator) showInstructionExecutor(node *sqlparser.Show, handlerCtx *handler.HandlerContext) dto.ExecutorOutput {
 	extended := strings.TrimSpace(strings.ToUpper(node.Extended)) == "EXTENDED"
 	nodeTypeUpperCase := strings.ToUpper(node.Type)
 	var keys map[string]map[string]interface{}
@@ -333,10 +236,10 @@ func (pb *primitiveBuilder) showInstructionExecutor(node *sqlparser.Show, handle
 	case "AUTH":
 		log.Infoln(fmt.Sprintf("Show For node.Type = '%s'", node.Type))
 		if err == nil {
-			authCtx, err := handlerCtx.GetAuthContext(pb.prov.GetProviderString())
+			authCtx, err := handlerCtx.GetAuthContext(pb.PrimitiveBuilder.GetProvider().GetProviderString())
 			if err == nil {
 				var authMeta *metadata.AuthMetadata
-				authMeta, err = pb.prov.ShowAuth(authCtx)
+				authMeta, err = pb.PrimitiveBuilder.GetProvider().ShowAuth(authCtx)
 				if err == nil {
 					keys = map[string]map[string]interface{}{
 						"1": authMeta.ToMap(),
@@ -352,7 +255,7 @@ func (pb *primitiveBuilder) showInstructionExecutor(node *sqlparser.Show, handle
 			constants.DefaultPrettyPrintBaseIndent,
 			"'",
 		)
-		tbl, err := pb.tables.GetTable(node)
+		tbl, err := pb.PrimitiveBuilder.GetTable(node)
 		if err != nil {
 			return util.GenerateSimpleErroneousOutput(err)
 		}
@@ -362,22 +265,22 @@ func (pb *primitiveBuilder) showInstructionExecutor(node *sqlparser.Show, handle
 			return util.GenerateSimpleErroneousOutput(fmt.Errorf("error creating insert statement for %s: %s", rsc, err.Error()))
 		}
 		pp := prettyprint.NewPrettyPrinter(ppCtx)
-		insertStmt, err := metadatavisitors.ToInsertStatement(node.Columns, meth, pb.insertSchemaMap, extended, pp)
-		tableName, _  := tbl.GetTableName()
+		insertStmt, err := metadatavisitors.ToInsertStatement(node.Columns, meth, pb.PrimitiveBuilder.GetInsertSchemaMap(), extended, pp)
+		tableName, _ := tbl.GetTableName()
 		if err != nil {
 			return util.GenerateSimpleErroneousOutput(fmt.Errorf("error creating insert statement for %s: %s", tableName, err.Error()))
 		}
 		stmtStr := fmt.Sprintf(insertStmt, tableName)
 		keys = map[string]map[string]interface{}{
-			"1": map[string]interface{}{
+			"1": {
 				"insert_statement": stmtStr,
 			},
 		}
 	case "METHODS":
 		var rsc *metadata.Resource
-		rsc, err = pb.prov.GetResource(node.OnTable.Qualifier.GetRawVal(), node.OnTable.Name.GetRawVal(), handlerCtx.RuntimeContext)
+		rsc, err = pb.PrimitiveBuilder.GetProvider().GetResource(node.OnTable.Qualifier.GetRawVal(), node.OnTable.Name.GetRawVal(), handlerCtx.RuntimeContext)
 		methods := rsc.Methods
-		tbl, err := pb.tables.GetTable(node.OnTable)
+		tbl, err := pb.PrimitiveBuilder.GetTable(node.OnTable)
 		var filter func(iqlmodel.ITable) (iqlmodel.ITable, error)
 		if err != nil {
 			log.Infoln(fmt.Sprintf("table and therefore filter not found for AST, shall procede nil filter"))
@@ -405,8 +308,8 @@ func (pb *primitiveBuilder) showInstructionExecutor(node *sqlparser.Show, handle
 			return prepareErroneousResultSet(keys, columnOrder, fmt.Errorf("no service designated from which to resolve resources"))
 		}
 		var resources map[string]metadata.Resource
-		resources, columnOrder, err = pb.prov.GetResourcesRedacted(svcName, handlerCtx.RuntimeContext, extended)
-		tbl, err := pb.tables.GetTable(node.OnTable)
+		resources, columnOrder, err = pb.PrimitiveBuilder.GetProvider().GetResourcesRedacted(svcName, handlerCtx.RuntimeContext, extended)
+		tbl, err := pb.PrimitiveBuilder.GetTable(node.OnTable)
 		var filter func(iqlmodel.ITable) (iqlmodel.ITable, error)
 		if err != nil {
 			log.Infoln(fmt.Sprintf("table and therefore filter not found for AST, shall procede nil filter"))
@@ -422,10 +325,10 @@ func (pb *primitiveBuilder) showInstructionExecutor(node *sqlparser.Show, handle
 			keys[k] = v.ToMap(extended)
 		}
 	case "SERVICES":
-		log.Infoln(fmt.Sprintf("Show For node.Type = '%s': Displaying services for provider = '%s'", node.Type, pb.prov.GetProviderString()))
+		log.Infoln(fmt.Sprintf("Show For node.Type = '%s': Displaying services for provider = '%s'", node.Type, pb.PrimitiveBuilder.GetProvider().GetProviderString()))
 		var services map[string]metadata.Service
-		services, columnOrder, err = pb.prov.GetProviderServicesRedacted(handlerCtx.RuntimeContext, extended)
-		services, err = filterServices(services, pb.tableFilter, handlerCtx.RuntimeContext.UseNonPreferredAPIs)
+		services, columnOrder, err = pb.PrimitiveBuilder.GetProvider().GetProviderServicesRedacted(handlerCtx.RuntimeContext, extended)
+		services, err = filterServices(services, pb.PrimitiveBuilder.GetTableFilter(), handlerCtx.RuntimeContext.UseNonPreferredAPIs)
 		if err != nil {
 			return prepareErroneousResultSet(keys, columnOrder, err)
 		}
@@ -447,7 +350,7 @@ func prepareErroneousResultSet(rowMap map[string]map[string]interface{}, columnO
 	)
 }
 
-func (pb *primitiveBuilder) describeInstructionExecutor(prov provider.IProvider,serviceName string, resourceName string, handlerCtx *handler.HandlerContext, extended bool, full bool) dto.ExecutorOutput {
+func (pb *primitiveGenerator) describeInstructionExecutor(prov provider.IProvider, serviceName string, resourceName string, handlerCtx *handler.HandlerContext, extended bool, full bool) dto.ExecutorOutput {
 	var schema *metadata.Schema
 	schema, columnOrder, err := prov.DescribeResource(serviceName, resourceName, handlerCtx.RuntimeContext, extended, full)
 	descriptionMap := schema.ToDescriptionMap(extended)
@@ -473,19 +376,19 @@ func extractStringFromMap(m map[string]interface{}, k string) string {
 	return retVal
 }
 
-func (pb *primitiveBuilder) selectExecutor(handlerCtx *handler.HandlerContext, node *sqlparser.Select, rowSort func(map[string]map[string]interface{}) []string) (plan.IPrimitive, error) {
-	if pb.builder == nil {
+func (pb *primitiveGenerator) selectExecutor(handlerCtx *handler.HandlerContext, node *sqlparser.Select, rowSort func(map[string]map[string]interface{}) []string) (plan.IPrimitive, error) {
+	if pb.PrimitiveBuilder.GetBuilder() == nil {
 		return nil, fmt.Errorf("builder not created for select, cannot proceed")
 	}
-	err := pb.builder.Build()
+	err := pb.PrimitiveBuilder.GetBuilder().Build()
 	if err != nil {
 		return nil, err
 	}
-	return pb.builder.GetPrimitive(), nil
+	return pb.PrimitiveBuilder.GetBuilder().GetPrimitive(), nil
 }
 
-func (pb *primitiveBuilder) insertExecutor(handlerCtx *handler.HandlerContext, node *sqlparser.Insert, rowSort func(map[string]map[string]interface{}) []string) (plan.IPrimitive, error) {
-	tbl, err := pb.tables.GetTable(node)
+func (pb *primitiveGenerator) insertExecutor(handlerCtx *handler.HandlerContext, node *sqlparser.Insert, rowSort func(map[string]map[string]interface{}) []string) (plan.IPrimitive, error) {
+	tbl, err := pb.PrimitiveBuilder.GetTable(node)
 	if err != nil {
 		return nil, err
 	}
@@ -493,11 +396,11 @@ func (pb *primitiveBuilder) insertExecutor(handlerCtx *handler.HandlerContext, n
 	if err != nil {
 		return nil, err
 	}
-	insertPrimitive := NewHTTPRestPrimitive(
+	insertPrimitive := primitivebuilder.NewHTTPRestPrimitive(
 		prov,
 		func(pc plan.IPrimitiveCtx) dto.ExecutorOutput {
 			var err error
-			response, apiErr := httpApiCall(*handlerCtx, prov, tbl.HttpArmoury.Context)
+			response, apiErr := httpmiddleware.HttpApiCall(*handlerCtx, prov, tbl.HttpArmoury.Context)
 			if apiErr != nil {
 				return util.PrepareResultSet(dto.NewPrepareResultSetDTO(nil, nil, nil, rowSort, apiErr, nil))
 			}
@@ -532,20 +435,20 @@ func (pb *primitiveBuilder) insertExecutor(handlerCtx *handler.HandlerContext, n
 			}
 			return dto.NewExecutorOutput(nil, target, &msgs, err)
 		})
-	if !pb.await {
+	if !pb.PrimitiveBuilder.IsAwait() {
 		return insertPrimitive, nil
 	}
 	return pb.composeAsyncMonitor(handlerCtx, insertPrimitive, tbl)
 }
 
-func (pb *primitiveBuilder) localSelectExecutor(handlerCtx *handler.HandlerContext, node *sqlparser.Select, rowSort func(map[string]map[string]interface{}) []string) (plan.IPrimitive, error) {
-	return NewLocalPrimitive(
+func (pb *primitiveGenerator) localSelectExecutor(handlerCtx *handler.HandlerContext, node *sqlparser.Select, rowSort func(map[string]map[string]interface{}) []string) (plan.IPrimitive, error) {
+	return primitivebuilder.NewLocalPrimitive(
 		func(pc plan.IPrimitiveCtx) dto.ExecutorOutput {
 			var columnOrder []string
 			keys := make(map[string]map[string]interface{})
 			row := make(map[string]interface{})
-			for idx := range pb.valOnlyCols {
-				col := pb.valOnlyCols[idx]
+			for idx := range pb.PrimitiveBuilder.GetValOnlyColKeys() {
+				col := pb.PrimitiveBuilder.GetValOnlyCol(idx)
 				if col != nil {
 					var alias string
 					var val interface{}
@@ -566,20 +469,20 @@ func (pb *primitiveBuilder) localSelectExecutor(handlerCtx *handler.HandlerConte
 		}), nil
 }
 
-func (pb *primitiveBuilder) deleteExecutor(handlerCtx *handler.HandlerContext, node *sqlparser.Delete) (plan.IPrimitive, error) {
-	tbl, err := pb.tables.GetTable(node)
+func (pb *primitiveGenerator) deleteExecutor(handlerCtx *handler.HandlerContext, node *sqlparser.Delete) (plan.IPrimitive, error) {
+	tbl, err := pb.PrimitiveBuilder.GetTable(node)
 	if err != nil {
 		return nil, err
 	}
 	prov, err := tbl.GetProvider()
 	if err != nil {
 		return nil, err
-	} 
-	deletePrimitive := NewHTTPRestPrimitive(
+	}
+	deletePrimitive := primitivebuilder.NewHTTPRestPrimitive(
 		prov,
 		func(pc plan.IPrimitiveCtx) dto.ExecutorOutput {
 			var err error
-			response, apiErr := httpApiCall(*handlerCtx, prov, tbl.HttpArmoury.Context)
+			response, apiErr := httpmiddleware.HttpApiCall(*handlerCtx, prov, tbl.HttpArmoury.Context)
 			if apiErr != nil {
 				return util.PrepareResultSet(dto.NewPrepareResultSetDTO(nil, nil, nil, nil, apiErr, nil))
 			}
@@ -614,7 +517,7 @@ func (pb *primitiveBuilder) deleteExecutor(handlerCtx *handler.HandlerContext, n
 			}
 			return pb.generateResultIfNeededfunc(keys, target, &msgs, err)
 		})
-	if !pb.await {
+	if !pb.PrimitiveBuilder.IsAwait() {
 		return deletePrimitive, nil
 	}
 	return pb.composeAsyncMonitor(handlerCtx, deletePrimitive, tbl)
@@ -636,16 +539,16 @@ func generateSuccessMessagesFromHeirarchy(meta taxonomy.ExtendedTableMetadata) [
 	return successMsgs
 }
 
-func (pb *primitiveBuilder) generateResultIfNeededfunc(resultMap map[string]map[string]interface{}, body map[string]interface{}, msg *dto.BackendMessages, err error) dto.ExecutorOutput {
-	if pb.commentDirectives != nil && pb.commentDirectives.IsSet("SHOWRESULTS") {
+func (pb *primitiveGenerator) generateResultIfNeededfunc(resultMap map[string]map[string]interface{}, body map[string]interface{}, msg *dto.BackendMessages, err error) dto.ExecutorOutput {
+	if pb.PrimitiveBuilder.GetCommentDirectives() != nil && pb.PrimitiveBuilder.GetCommentDirectives().IsSet("SHOWRESULTS") {
 		return util.PrepareResultSet(dto.NewPrepareResultSetDTO(nil, resultMap, nil, nil, nil, nil))
 	}
 	return dto.NewExecutorOutput(nil, body, msg, err)
 }
 
-func (pb *primitiveBuilder) execExecutor(handlerCtx *handler.HandlerContext, node *sqlparser.Exec) (plan.IPrimitive, error) {
+func (pb *primitiveGenerator) execExecutor(handlerCtx *handler.HandlerContext, node *sqlparser.Exec) (plan.IPrimitive, error) {
 	var target map[string]interface{}
-	tbl, err := pb.tables.GetTable(node)
+	tbl, err := pb.PrimitiveBuilder.GetTable(node)
 	if err != nil {
 		return nil, err
 	}
@@ -653,12 +556,12 @@ func (pb *primitiveBuilder) execExecutor(handlerCtx *handler.HandlerContext, nod
 	if err != nil {
 		return nil, err
 	}
-	execPrimitive := NewHTTPRestPrimitive(
+	execPrimitive := primitivebuilder.NewHTTPRestPrimitive(
 		prov,
 		func(pc plan.IPrimitiveCtx) dto.ExecutorOutput {
 			var err error
 			var columnOrder []string
-			response, apiErr := httpApiCall(*handlerCtx, prov, tbl.HttpArmoury.Context)
+			response, apiErr := httpmiddleware.HttpApiCall(*handlerCtx, prov, tbl.HttpArmoury.Context)
 			if apiErr != nil {
 				return util.PrepareResultSet(dto.NewPrepareResultSetDTO(nil, nil, nil, nil, apiErr, nil))
 			}
@@ -699,13 +602,13 @@ func (pb *primitiveBuilder) execExecutor(handlerCtx *handler.HandlerContext, nod
 			}
 			return pb.generateResultIfNeededfunc(keys, target, &msgs, err)
 		})
-	if !pb.await {
+	if !pb.PrimitiveBuilder.IsAwait() {
 		return execPrimitive, nil
 	}
 	return pb.composeAsyncMonitor(handlerCtx, execPrimitive, tbl)
 }
 
-func (pb *primitiveBuilder) composeAsyncMonitor(handlerCtx *handler.HandlerContext, precursor plan.IPrimitive, meta taxonomy.ExtendedTableMetadata) (plan.IPrimitive, error) {
+func (pb *primitiveGenerator) composeAsyncMonitor(handlerCtx *handler.HandlerContext, precursor plan.IPrimitive, meta taxonomy.ExtendedTableMetadata) (plan.IPrimitive, error) {
 	prov, err := meta.GetProvider()
 	if err != nil {
 		return nil, err
@@ -723,7 +626,7 @@ func (pb *primitiveBuilder) composeAsyncMonitor(handlerCtx *handler.HandlerConte
 		authCtx,
 		handlerCtx.Outfile,
 		handlerCtx.OutErrFile,
-		pb.commentDirectives,
+		pb.PrimitiveBuilder.GetCommentDirectives(),
 	)
 	primitive, err := asm.GetMonitorPrimitive(meta.HeirarchyObjects, precursor, pl)
 	if err != nil {
