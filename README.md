@@ -104,4 +104,4 @@ We gratefully acknowledge these pieces of work.
 
 ## License
 
-See [/LICENSE](/LICENSE).
+See [/LICENSE](/LICENSE)
