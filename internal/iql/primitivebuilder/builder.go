@@ -1,17 +1,16 @@
-package planbuilder
+package primitivebuilder
 
 import (
-
 	"fmt"
 	"strconv"
-	
+
 	"infraql/internal/iql/dto"
 	"infraql/internal/iql/handler"
 	"infraql/internal/iql/httpexec"
+	"infraql/internal/iql/httpmiddleware"
 	"infraql/internal/iql/plan"
 	"infraql/internal/iql/taxonomy"
 	"infraql/internal/iql/util"
-
 
 	"vitess.io/vitess/go/sqltypes"
 	querypb "vitess.io/vitess/go/vt/proto/query"
@@ -19,51 +18,49 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-type builder interface{
-
+type Builder interface {
 	Build() error
 
 	GetPrimitive() plan.IPrimitive
 }
 
-type singleSelect struct {
-	primitiveBuilder *primitiveBuilder
+type SingleSelect struct {
+	primitiveBuilder *PrimitiveBuilder
 	handlerCtx       *handler.HandlerContext
 	tableMeta        taxonomy.ExtendedTableMetadata
-	rowSort func(map[string]map[string]interface{}) []string
+	rowSort          func(map[string]map[string]interface{}) []string
 }
 
-type join struct {
-	lhsPb, rhsPb     *primitiveBuilder
-	lhs, rhs         builder
-	handlerCtx       *handler.HandlerContext
-	rowSort func(map[string]map[string]interface{}) []string
+type Join struct {
+	lhsPb, rhsPb *PrimitiveBuilder
+	lhs, rhs     Builder
+	handlerCtx   *handler.HandlerContext
+	rowSort      func(map[string]map[string]interface{}) []string
 }
 
-
-func newSingleSelect(pb *primitiveBuilder, handlerCtx *handler.HandlerContext, tableMeta taxonomy.ExtendedTableMetadata, rowSort func(map[string]map[string]interface{}) []string) *singleSelect {
-	return &singleSelect{
+func NewSingleSelect(pb *PrimitiveBuilder, handlerCtx *handler.HandlerContext, tableMeta taxonomy.ExtendedTableMetadata, rowSort func(map[string]map[string]interface{}) []string) *SingleSelect {
+	return &SingleSelect{
 		primitiveBuilder: pb,
-		handlerCtx: handlerCtx,
-		tableMeta: tableMeta,
-		rowSort: rowSort,
+		handlerCtx:       handlerCtx,
+		tableMeta:        tableMeta,
+		rowSort:          rowSort,
 	}
 }
 
-func newJoin(lhsPb *primitiveBuilder, rhsPb *primitiveBuilder, handlerCtx *handler.HandlerContext, rowSort func(map[string]map[string]interface{}) []string) *join {
-	return &join{
-		lhsPb: lhsPb,
-		rhsPb: rhsPb,
+func NewJoin(lhsPb *PrimitiveBuilder, rhsPb *PrimitiveBuilder, handlerCtx *handler.HandlerContext, rowSort func(map[string]map[string]interface{}) []string) *Join {
+	return &Join{
+		lhsPb:      lhsPb,
+		rhsPb:      rhsPb,
 		handlerCtx: handlerCtx,
-		rowSort: rowSort,
+		rowSort:    rowSort,
 	}
 }
 
-func (ss *singleSelect) Build() error {
+func (ss *SingleSelect) Build() error {
 	return nil
 }
 
-func (ss *singleSelect) GetPrimitive() plan.IPrimitive {
+func (ss *SingleSelect) GetPrimitive() plan.IPrimitive {
 	prov, err := ss.tableMeta.GetProvider()
 	return NewHTTPRestPrimitive(
 		prov,
@@ -78,7 +75,7 @@ func (ss *singleSelect) GetPrimitive() plan.IPrimitive {
 					nil,
 				))
 			}
-			response, apiErr := httpApiCall(*(ss.handlerCtx), prov, ss.tableMeta.HttpArmoury.Context)
+			response, apiErr := httpmiddleware.HttpApiCall(*(ss.handlerCtx), prov, ss.tableMeta.HttpArmoury.Context)
 			if apiErr != nil {
 				return util.PrepareResultSet(dto.NewPrepareResultSetDTO(nil, nil, nil, ss.rowSort, apiErr, nil))
 			}
@@ -107,14 +104,14 @@ func (ss *singleSelect) GetPrimitive() plan.IPrimitive {
 					}
 				}
 			}
-			rv := util.PrepareResultSet(dto.NewPrepareResultSetDTO(nil, keys, ss.primitiveBuilder.columnOrder, ss.rowSort, err, nil))
+			rv := util.PrepareResultSet(dto.NewPrepareResultSetDTO(nil, keys, ss.primitiveBuilder.GetColumnOrder(), ss.rowSort, err, nil))
 			if rv.Result == nil && err == nil {
 				rv.Result = &sqltypes.Result{
-					Fields: make([]*querypb.Field, len(ss.primitiveBuilder.columnOrder)),
+					Fields: make([]*querypb.Field, len(ss.primitiveBuilder.GetColumnOrder())),
 				}
 				for f := range rv.Result.Fields {
 					rv.Result.Fields[f] = &querypb.Field{
-						Name: ss.primitiveBuilder.columnOrder[f],
+						Name: ss.primitiveBuilder.GetColumnOrder()[f],
 					}
 				}
 			}
@@ -122,14 +119,14 @@ func (ss *singleSelect) GetPrimitive() plan.IPrimitive {
 		})
 }
 
-func (j *join) Build() error {
+func (j *Join) Build() error {
 	return nil
 }
 
-func (j *join) GetPrimitive() plan.IPrimitive {
+func (j *Join) GetPrimitive() plan.IPrimitive {
 	return NewLocalPrimitive(
-		func (pc plan.IPrimitiveCtx) dto.ExecutorOutput {
-		  return util.GenerateSimpleErroneousOutput(fmt.Errorf("joins not yet supported"))
+		func(pc plan.IPrimitiveCtx) dto.ExecutorOutput {
+			return util.GenerateSimpleErroneousOutput(fmt.Errorf("joins not yet supported"))
 		},
 	)
 }
