@@ -116,6 +116,18 @@
       "verbose": true
     },
     {
+      "name": "Tabular stdout based SHOW METHODS test + assertion",
+      "output": "table",
+      "instruction": "exec",
+      "query": "show methods in compute.instances;",
+      "expected": [ 
+        "\\|[\\|\\-]*\\|$",
+        "\\|[\\W]+MethodName"
+      ],
+      "output_file": "output/stdout",
+      "verbose": true
+    },
+    {
       "name": "From json templated file, filtered, alt-deimited CSV file based SHOW EXTENDED SERVICES test + assertion",
       "output": "csv",
       "delimiter": ";",

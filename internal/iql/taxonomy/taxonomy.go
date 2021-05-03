@@ -4,24 +4,24 @@ import (
 	"fmt"
 	"infraql/internal/iql/handler"
 	"infraql/internal/iql/httpbuild"
+	"infraql/internal/iql/iqlmodel"
+	"infraql/internal/iql/iqlutil"
 	"infraql/internal/iql/metadata"
 	"infraql/internal/iql/parserutil"
 	"infraql/internal/iql/provider"
-	"infraql/internal/iql/iqlmodel"
-	"infraql/internal/iql/iqlutil"
 	"strings"
 
 	"vitess.io/vitess/go/vt/sqlparser"
 )
 
 type ExtendedTableMetadata struct {
-	TableFilter          func(iqlmodel.ITable) (iqlmodel.ITable, error)
-	ColsVisited          map[string]bool
-	HeirarchyObjects     *HeirarchyObjects
-	RequiredParameters   map[string]iqlmodel.Parameter
-	IsLocallyExecutable  bool
-	HttpArmoury          *httpbuild.HTTPArmoury
-	SelectItemsKey       string
+	TableFilter         func(iqlmodel.ITable) (iqlmodel.ITable, error)
+	ColsVisited         map[string]bool
+	HeirarchyObjects    *HeirarchyObjects
+	RequiredParameters  map[string]iqlmodel.Parameter
+	IsLocallyExecutable bool
+	HttpArmoury         *httpbuild.HTTPArmoury
+	SelectItemsKey      string
 }
 
 func (ex ExtendedTableMetadata) GetProvider() (provider.IProvider, error) {
@@ -174,6 +174,8 @@ func GetHeirarchyFromStatement(handlerCtx *handler.HandlerContext, node sqlparse
 		case "INSERT":
 			hIds = resolveResourceTerminalHeirarchyIdentifiers(n.OnTable)
 			methodAction = "insert"
+		case "METHODS":
+			hIds = resolveResourceTerminalHeirarchyIdentifiers(n.OnTable)
 		default:
 			return nil, fmt.Errorf("cannot resolve taxonomy for SHOW statement of type = '%s'", strings.ToUpper(n.Type))
 		}
