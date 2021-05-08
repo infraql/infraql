@@ -172,6 +172,9 @@ func (sv *SchemaRequestTemplateVisitor) RetrieveTemplate(sc *metadata.Schema, sc
 			ss, idStr := v.GetSchema(sc.SchemaCentral)
 			if ss != nil && (idStr == "" || !sv.isVisited(idStr)) {
 				sv.recordSchemaVisited(idStr)
+				if ss.OutputOnly {
+					continue
+				}
 				rv, err := sv.retrieveTemplateVal(ss, methodKey, ".values."+constants.RequestBodyBaseKey+k)
 				if err != nil {
 					return nil, err
