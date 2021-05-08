@@ -241,17 +241,17 @@
       "delimiter": ";",
       "instruction": "exec",
       "headless": true,
-      "query": "show insert into compute.disks(zone, data__users);",
+      "query": "show insert into compute.disks(zone, data__resourcePolicies);",
       "output_file": "output/col-selected-show-insert-google-compute-disks.iql",
       "verbose": true,
       "expected": [ 
         "INSERT",
         "\\ \\ zone,",
-        "\\ \\ data__users",
+        "\\ \\ data__resourcePolicies",
         "\\)",
         "SELECT",
         "\\ \\ '{{\\ .values.zone\\ }}',",
-        "\\ \\ '\\[\\ \\\"{{\\ .values.data__users\\[0\\]\\ }}\\\"\\ \\]'",
+        "\\ \\ '\\[\\ \\\"{{\\ .values.data__resourcePolicies\\[0\\]\\ }}\\\"\\ \\]'",
         ";"
       ]
     }
