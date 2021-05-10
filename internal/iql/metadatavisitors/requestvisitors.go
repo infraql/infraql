@@ -19,14 +19,16 @@ type SchemaRequestTemplateVisitor struct {
 	Strategy       string
 	PrettyPrinter  *prettyprint.PrettyPrinter
 	visitedObjects map[string]bool
+	requiredOnly   bool
 }
 
-func NewSchemaRequestTemplateVisitor(maxDepth int, strategy string, prettyPrinter *prettyprint.PrettyPrinter) *SchemaRequestTemplateVisitor {
+func NewSchemaRequestTemplateVisitor(maxDepth int, strategy string, prettyPrinter *prettyprint.PrettyPrinter, requiredOnly bool) *SchemaRequestTemplateVisitor {
 	return &SchemaRequestTemplateVisitor{
 		MaxDepth:       maxDepth,
 		Strategy:       strategy,
 		PrettyPrinter:  prettyPrinter,
 		visitedObjects: make(map[string]bool),
+		requiredOnly:   requiredOnly,
 	}
 }
 
@@ -75,7 +77,7 @@ func isBodyParam(paramName string) bool {
 	return strings.HasPrefix(paramName, constants.RequestBodyBaseKey)
 }
 
-func ToInsertStatement(columns sqlparser.Columns, m *metadata.Method, schemaMap map[string]metadata.Schema, extended bool, prettyPrinter *prettyprint.PrettyPrinter) (string, error) {
+func ToInsertStatement(columns sqlparser.Columns, m *metadata.Method, schemaMap map[string]metadata.Schema, extended bool, prettyPrinter *prettyprint.PrettyPrinter, requiredOnly bool) (string, error) {
 	paramsToInclude := m.Parameters
 	successfullyIncludedCols := make(map[string]bool)
 	if !extended {
@@ -125,9 +127,9 @@ func ToInsertStatement(columns sqlparser.Columns, m *metadata.Method, schemaMap 
 			"\n)\n" + "SELECT\n" + strings.Join(exprList, ",\n") + "\n;\n", err
 	}
 
-	schemaVisitor := NewSchemaRequestTemplateVisitor(2, "", prettyPrinter)
+	schemaVisitor := NewSchemaRequestTemplateVisitor(2, "", prettyPrinter, requiredOnly)
 
-	tVal, _ := schemaVisitor.RetrieveTemplate(sch, m.RequestType.Type, m.ID, extended)
+	tVal, _ := schemaVisitor.RetrieveTemplate(sch, m, extended)
 
 	log.Infoln(fmt.Sprintf("tVal = %v", tVal))
 
@@ -163,19 +165,20 @@ func ToInsertStatement(columns sqlparser.Columns, m *metadata.Method, schemaMap 
 	return retVal, err
 }
 
-func (sv *SchemaRequestTemplateVisitor) RetrieveTemplate(sc *metadata.Schema, schemaKey string, methodKey string, extended bool) (map[string]string, error) {
+func (sv *SchemaRequestTemplateVisitor) RetrieveTemplate(sc *metadata.Schema, method *metadata.Method, extended bool) (map[string]string, error) {
 	retVal := make(map[string]string)
-	sv.recordSchemaVisited(schemaKey)
+	sv.recordSchemaVisited(method.RequestType.Type)
 	switch sc.Type {
 	case "object":
 		for k, v := range sc.Properties {
 			ss, idStr := v.GetSchema(sc.SchemaCentral)
 			if ss != nil && (idStr == "" || !sv.isVisited(idStr)) {
 				sv.recordSchemaVisited(idStr)
-				if ss.OutputOnly {
+				if ss.OutputOnly || (sv.requiredOnly && !ss.IsRequired(method)) {
+					log.Infoln(fmt.Sprintf("property = '%s' will be skipped", k))
 					continue
 				}
-				rv, err := sv.retrieveTemplateVal(ss, methodKey, ".values."+constants.RequestBodyBaseKey+k)
+				rv, err := sv.retrieveTemplateVal(ss, ".values."+constants.RequestBodyBaseKey+k)
 				if err != nil {
 					return nil, err
 				}
@@ -201,7 +204,7 @@ func (sv *SchemaRequestTemplateVisitor) RetrieveTemplate(sc *metadata.Schema, sc
 	return nil, fmt.Errorf("templating of request body only supported for object type payload")
 }
 
-func (sv *SchemaRequestTemplateVisitor) retrieveTemplateVal(sc *metadata.Schema, methodKey string, objectKey string) (interface{}, error) {
+func (sv *SchemaRequestTemplateVisitor) retrieveTemplateVal(sc *metadata.Schema, objectKey string) (interface{}, error) {
 	sSplit := strings.Split(objectKey, ".")
 	oKey := sSplit[len(sSplit)-1]
 	oPrefix := objectKey
@@ -222,7 +225,7 @@ func (sv *SchemaRequestTemplateVisitor) retrieveTemplateVal(sc *metadata.Schema,
 			ss, idStr := v.GetSchema(sc.SchemaCentral)
 			if ss != nil && (idStr == "" || !sv.isVisited(idStr)) {
 				sv.recordSchemaVisited(idStr)
-				sv, err := sv.retrieveTemplateVal(ss, methodKey, templateValName+"."+k)
+				sv, err := sv.retrieveTemplateVal(ss, templateValName+"."+k)
 				if err != nil {
 					return nil, err
 				}
@@ -243,7 +246,7 @@ func (sv *SchemaRequestTemplateVisitor) retrieveTemplateVal(sc *metadata.Schema,
 		if err != nil {
 			return nil, err
 		}
-		itemS, err := sv.retrieveTemplateVal(iSch, methodKey, templateValName+"[0]")
+		itemS, err := sv.retrieveTemplateVal(iSch, templateValName+"[0]")
 		arr = append(arr, itemS)
 		if err != nil {
 			return nil, err

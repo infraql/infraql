@@ -6,6 +6,7 @@ const (
 	K8STheHardWayTemplateFile              string = "test/assets/input/k8s-the-hard-way/k8s-the-hard-way.iql"
 	K8STheHardWayTemplateContextFile       string = "test/assets/input/k8s-the-hard-way/vars.jsonnet"
 	SimpleShowResourcesFilteredFile        string = "test/assets/input/show/show-resources-filtered.iql"
+	ShowInsertAddressesRequiredInputFile   string = "test/assets/input/simple-templating/show-insert-compute-addresses-required.iql"
 	SimpleInsertComputeNetwork             string = `
 	--
 	-- create VPC 

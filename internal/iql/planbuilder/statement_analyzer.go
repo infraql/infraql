@@ -365,7 +365,7 @@ func (p *primitiveGenerator) analyzeExec(handlerCtx *handler.HandlerContext, nod
 		if err != nil {
 			return err
 		}
-		err = p.analyzeSchemaVsMap(handlerCtx, requestSchema, execPayload.PayloadMap, method.Path)
+		err = p.analyzeSchemaVsMap(handlerCtx, requestSchema, execPayload.PayloadMap, method)
 		if err != nil {
 			return err
 		}
@@ -422,37 +422,37 @@ func contains(slice []interface{}, elem interface{}) bool {
 	return false
 }
 
-func (p *primitiveGenerator) analyzeSchemaVsMap(handlerCtx *handler.HandlerContext, schema *metadata.Schema, payload map[string]interface{}, methodPath string) error {
-	var requiredElements map[string]bool
+func (p *primitiveGenerator) analyzeSchemaVsMap(handlerCtx *handler.HandlerContext, schema *metadata.Schema, payload map[string]interface{}, method *metadata.Method) error {
+	requiredElements := make(map[string]bool)
 	for k, v := range schema.Properties {
 		if v.NamedRef != "" {
 			ss := schema.SchemaCentral.SchemaRef[v.NamedRef]
-			if req, ok := ss.Required[methodPath]; ok && req {
+			if ss.IsRequired(method) {
 				requiredElements[k] = true
 			}
 		} else {
 			ss := v.SchemaRef[k]
-			if req, ok := ss.Required[methodPath]; ok && req {
+			if ss.IsRequired(method) {
 				requiredElements[k] = true
 			}
 		}
 	}
 	for k, v := range payload {
+		subSchema, ok := schema.Properties[k]
+		if !ok {
+			return fmt.Errorf("schema does not possess payload key '%s'", k)
+		}
+		var ss metadata.Schema
+		if subSchema.NamedRef != "" {
+			ss = schema.SchemaCentral.SchemaRef[subSchema.NamedRef]
+		} else {
+			ss = subSchema.SchemaRef[k]
+		}
 		switch val := v.(type) {
 		case map[string]interface{}:
 			delete(requiredElements, k)
-			subSchema, ok := schema.Properties[k]
 			var err error
-			if !ok {
-				return fmt.Errorf("schema does not possess payload key '%s'", k)
-			}
-			if subSchema.NamedRef != "" {
-				ss := schema.SchemaCentral.SchemaRef[subSchema.NamedRef]
-				err = p.analyzeSchemaVsMap(handlerCtx, &ss, val, methodPath)
-			} else {
-				ss := subSchema.SchemaRef[k]
-				err = p.analyzeSchemaVsMap(handlerCtx, &ss, val, methodPath)
-			}
+			err = p.analyzeSchemaVsMap(handlerCtx, &ss, val, method)
 			if err != nil {
 				return err
 			}
@@ -469,7 +469,7 @@ func (p *primitiveGenerator) analyzeSchemaVsMap(handlerCtx *handler.HandlerConte
 			if len(val) > 0 && val[0] != nil {
 				switch item := val[0].(type) {
 				case map[string]interface{}:
-					err := p.analyzeSchemaVsMap(handlerCtx, arraySchema, item, methodPath)
+					err := p.analyzeSchemaVsMap(handlerCtx, arraySchema, item, method)
 					if err != nil {
 						return err
 					}
@@ -481,6 +481,31 @@ func (p *primitiveGenerator) analyzeSchemaVsMap(handlerCtx *handler.HandlerConte
 					return fmt.Errorf("array at key '%s' does not contain recognisable type '%T'", k, item)
 				}
 			}
+		case string:
+			if ss.Type != "string" {
+				return fmt.Errorf("key '%s' expected to contain element of type 'string' but instead it is type '%T'", k, val)
+			}
+			delete(requiredElements, k)
+		case int:
+			if ss.IsIntegral() {
+				delete(requiredElements, k)
+				continue
+			}
+			return fmt.Errorf("key '%s' expected to contain element of type 'int' but instead it is type '%T'", k, val)
+		case bool:
+			if ss.IsBoolean() {
+				delete(requiredElements, k)
+				continue
+			}
+			return fmt.Errorf("key '%s' expected to contain element of type 'bool' but instead it is type '%T'", k, val)
+		case float64:
+			if ss.IsFloat() {
+				delete(requiredElements, k)
+				continue
+			}
+			return fmt.Errorf("key '%s' expected to contain element of type 'float64' but instead it is type '%T'", k, val)
+		default:
+			return fmt.Errorf("key '%s' of type '%T' not currently supported", k, val)
 		}
 	}
 	if len(requiredElements) != 0 {
@@ -891,6 +916,7 @@ func (p *primitiveGenerator) analyzeSleep(handlerCtx *handler.HandlerContext, no
 
 func (p *primitiveGenerator) analyzeShow(handlerCtx *handler.HandlerContext, node *sqlparser.Show) error {
 	var err error
+	p.parseComments(node.Comments)
 	err = p.inferProviderForShow(node, handlerCtx)
 	if err != nil {
 		return err

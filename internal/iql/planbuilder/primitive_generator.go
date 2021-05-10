@@ -265,7 +265,8 @@ func (pb *primitiveGenerator) showInstructionExecutor(node *sqlparser.Show, hand
 			return util.GenerateSimpleErroneousOutput(fmt.Errorf("error creating insert statement for %s: %s", rsc, err.Error()))
 		}
 		pp := prettyprint.NewPrettyPrinter(ppCtx)
-		insertStmt, err := metadatavisitors.ToInsertStatement(node.Columns, meth, pb.PrimitiveBuilder.GetInsertSchemaMap(), extended, pp)
+		requiredOnly := pb.PrimitiveBuilder.GetCommentDirectives() != nil && pb.PrimitiveBuilder.GetCommentDirectives().IsSet("REQUIRED")
+		insertStmt, err := metadatavisitors.ToInsertStatement(node.Columns, meth, pb.PrimitiveBuilder.GetInsertSchemaMap(), extended, pp, requiredOnly)
 		tableName, _ := tbl.GetTableName()
 		if err != nil {
 			return util.GenerateSimpleErroneousOutput(fmt.Errorf("error creating insert statement for %s: %s", tableName, err.Error()))
