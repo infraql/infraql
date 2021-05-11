@@ -309,12 +309,11 @@ func (pb *primitiveGenerator) showInstructionExecutor(node *sqlparser.Show, hand
 		}
 		var resources map[string]metadata.Resource
 		resources, columnOrder, err = pb.PrimitiveBuilder.GetProvider().GetResourcesRedacted(svcName, handlerCtx.RuntimeContext, extended)
-		tbl, err := pb.PrimitiveBuilder.GetTable(node.OnTable)
 		var filter func(iqlmodel.ITable) (iqlmodel.ITable, error)
 		if err != nil {
 			log.Infoln(fmt.Sprintf("table and therefore filter not found for AST, shall procede nil filter"))
 		} else {
-			filter = tbl.TableFilter
+			filter = pb.PrimitiveBuilder.GetTableFilter()
 		}
 		resources, err = filterResources(resources, filter)
 		if err != nil {
