@@ -1,11 +1,11 @@
 package driver_test
 
 import (
+	"io/ioutil"
 	"net/url"
 	"os"
 	"strings"
 	"testing"
-	"io/ioutil"
 
 	"bufio"
 
@@ -14,13 +14,13 @@ import (
 	"infraql/internal/iql/config"
 	"infraql/internal/iql/entryutil"
 	"infraql/internal/iql/handler"
+	"infraql/internal/iql/provider"
 	"infraql/internal/iql/querysubmit"
 	"infraql/internal/iql/responsehandler"
-	"infraql/internal/iql/provider"
 
 	"infraql/internal/test/infraqltestutil"
-	"infraql/internal/test/testobjects"
 	"infraql/internal/test/testhttpapi"
+	"infraql/internal/test/testobjects"
 
 	lrucache "vitess.io/vitess/go/cache"
 )
@@ -54,7 +54,7 @@ func TestSimpleSelectGoogleComputeInstanceDriver(t *testing.T) {
 	}
 
 	ProcessQuery(handlerCtx)
-	
+
 	t.Logf("simple select driver integration test passed")
 }
 
@@ -64,14 +64,13 @@ func TestSimpleSelectGoogleComputeInstanceDriverOutput(t *testing.T) {
 		t.Fatalf("Test failed: %v", err)
 	}
 
-
 	testSubject := func(t *testing.T, outFile *bufio.Writer) {
 
 		handlerCtx, err := entryutil.BuildHandlerContext(*runtimeCtx, strings.NewReader(""), lrucache.NewLRUCache(int64(runtimeCtx.QueryCacheSize)))
 		if err != nil {
 			t.Fatalf("Test failed: %v", err)
 		}
-		
+
 		handlerCtx.Outfile = outFile
 		handlerCtx.OutErrFile = os.Stderr
 
@@ -96,14 +95,13 @@ func TestSimpleSelectGoogleContainerSubnetworksAllowedDriverOutput(t *testing.T)
 		t.Fatalf("Test failed: %v", err)
 	}
 
-
 	testSubject := func(t *testing.T, outFile *bufio.Writer) {
 
 		handlerCtx, err := entryutil.BuildHandlerContext(*runtimeCtx, strings.NewReader(""), lrucache.NewLRUCache(int64(runtimeCtx.QueryCacheSize)))
 		if err != nil {
 			t.Fatalf("Test failed: %v", err)
 		}
-		
+
 		handlerCtx.Outfile = outFile
 		handlerCtx.OutErrFile = os.Stderr
 
@@ -128,14 +126,13 @@ func TestSimpleInsertGoogleComputeNetworkAsync(t *testing.T) {
 		t.Fatalf("Test failed: %v", err)
 	}
 
-
 	testSubject := func(t *testing.T, outFile *bufio.Writer) {
 
 		handlerCtx, err := entryutil.BuildHandlerContext(*runtimeCtx, strings.NewReader(""), lrucache.NewLRUCache(int64(runtimeCtx.QueryCacheSize)))
 		if err != nil {
 			t.Fatalf("Test failed: %v", err)
 		}
-		
+
 		handlerCtx.Outfile = outFile
 		handlerCtx.OutErrFile = os.Stderr
 
@@ -156,12 +153,10 @@ func TestSimpleInsertGoogleComputeNetworkAsync(t *testing.T) {
 
 func TestK8sTheHardWayAsync(t *testing.T) {
 
-
 	runtimeCtx, err := infraqltestutil.GetRuntimeCtx(config.GetGoogleProviderString(), "text")
 	if err != nil {
 		t.Fatalf("Test failed: %v", err)
 	}
-
 
 	testSubject := func(t *testing.T, outFile *bufio.Writer) {
 		k8sthwRenderedFile, err := infraqltestutil.GetFilePathFromRepositoryRoot(testobjects.ExpectedK8STheHardWayRenderedFile)
@@ -169,9 +164,9 @@ func TestK8sTheHardWayAsync(t *testing.T) {
 			t.Fatalf("Test failed: %v", err)
 		}
 		megaQueryConcat, err := ioutil.ReadFile(k8sthwRenderedFile)
-    if err != nil {
+		if err != nil {
 			t.Fatalf("%v", err)
-    }
+		}
 		runtimeCtx.InfilePath = k8sthwRenderedFile
 		runtimeCtx.CSVHeadersDisable = true
 
@@ -179,7 +174,7 @@ func TestK8sTheHardWayAsync(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Test failed: %v", err)
 		}
-		
+
 		handlerCtx.Outfile = outFile
 		handlerCtx.OutErrFile = os.Stderr
 
@@ -193,6 +188,42 @@ func TestK8sTheHardWayAsync(t *testing.T) {
 
 	infraqltestutil.SetupK8sTheHardWayE2eSuccess(t)
 	infraqltestutil.RunCaptureTestAgainstFiles(t, testSubject, []string{testobjects.ExpectedK8STheHardWayAsyncFile})
+
+}
+
+func TestSimpleShowResourcesFiltered(t *testing.T) {
+
+	testSubject := func(t *testing.T, outFile *bufio.Writer) {
+
+		runtimeCtx, err := infraqltestutil.GetRuntimeCtx(config.GetGoogleProviderString(), "text")
+		if err != nil {
+			t.Fatalf("TestSimpleShowResourcesFiltered failed: %v", err)
+		}
+		showInsertFile, err := infraqltestutil.GetFilePathFromRepositoryRoot(testobjects.SimpleShowResourcesFilteredFile)
+		if err != nil {
+			t.Fatalf("TestSimpleShowResourcesFiltered failed: %v", err)
+		}
+		runtimeCtx.InfilePath = showInsertFile
+		runtimeCtx.OutputFormat = "text"
+		runtimeCtx.CSVHeadersDisable = true
+
+		rdr, err := os.Open(runtimeCtx.InfilePath)
+		if err != nil {
+			t.Fatalf("Test failed: %v", err)
+		}
+
+		handlerCtx, err := entryutil.BuildHandlerContext(*runtimeCtx, rdr, lrucache.NewLRUCache(int64(runtimeCtx.QueryCacheSize)))
+		if err != nil {
+			t.Fatalf("Test failed: %v", err)
+		}
+
+		handlerCtx.Outfile = outFile
+		handlerCtx.OutErrFile = os.Stderr
+
+		ProcessQuery(handlerCtx)
+	}
+
+	infraqltestutil.RunCaptureTestAgainstFiles(t, testSubject, []string{testobjects.ExpectedShowResourcesFilteredFile})
 
 }
 
