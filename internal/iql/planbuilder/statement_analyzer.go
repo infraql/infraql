@@ -279,7 +279,13 @@ func (pb *primitiveGenerator) analyzeWhere(where *sqlparser.Where, schema *metad
 			rscStr, _ := v.GetResourceStr()
 			remainingRequiredParameters[fmt.Sprintf("%s.%s", rscStr, l)] = w
 		}
-		colUsages, err := parserutil.GetColumnUsageTypes(where.Expr)
+		var colUsages []parserutil.ColumnUsageMetadata
+		if where != nil {
+			colUsages, err = parserutil.GetColumnUsageTypes(where.Expr)
+		}
+		if err != nil {
+			return err
+		}
 		err = parserutil.CheckColUsagesAgainstTable(colUsages, method)
 		if err != nil {
 			return err
