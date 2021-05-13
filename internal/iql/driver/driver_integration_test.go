@@ -267,3 +267,38 @@ func TestSimpleDryRunK8sTheHardWayDriver(t *testing.T) {
 	infraqltestutil.RunCaptureTestAgainstFiles(t, testSubject, []string{testobjects.ExpectedK8STheHardWayRenderedFile})
 
 }
+
+func TestSimpleShowInsertComputeAddressesRequired(t *testing.T) {
+
+	testSubject := func(t *testing.T, outFile *bufio.Writer) {
+
+		runtimeCtx, err := infraqltestutil.GetRuntimeCtx(config.GetGoogleProviderString(), "text")
+		if err != nil {
+			t.Fatalf("TestSimpleTemplateComputeAddressesRequired failed: %v", err)
+		}
+		showInsertFile, err := infraqltestutil.GetFilePathFromRepositoryRoot(testobjects.ShowInsertAddressesRequiredInputFile)
+		if err != nil {
+			t.Fatalf("TestSimpleTemplateComputeAddressesRequired failed: %v", err)
+		}
+		runtimeCtx.InfilePath = showInsertFile
+		runtimeCtx.CSVHeadersDisable = true
+
+		rdr, err := os.Open(runtimeCtx.InfilePath)
+		if err != nil {
+			t.Fatalf("Test failed: %v", err)
+		}
+
+		handlerCtx, err := entryutil.BuildHandlerContext(*runtimeCtx, rdr, lrucache.NewLRUCache(int64(runtimeCtx.QueryCacheSize)))
+		if err != nil {
+			t.Fatalf("Test failed: %v", err)
+		}
+
+		handlerCtx.Outfile = outFile
+		handlerCtx.OutErrFile = os.Stderr
+
+		ProcessQuery(handlerCtx)
+	}
+
+	infraqltestutil.RunCaptureTestAgainstFiles(t, testSubject, []string{testobjects.ExpectedShowInsertAddressesRequiredFile})
+
+}

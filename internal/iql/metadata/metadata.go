@@ -328,6 +328,23 @@ type Schema struct {
 	Required         map[string]bool         `json:"__required__"`
 }
 
+func (s *Schema) IsIntegral() bool {
+	return s.Type == "int" || s.Type == "integer"
+}
+
+func (s *Schema) IsBoolean() bool {
+	return s.Type == "bool" || s.Type == "boolean"
+}
+
+func (s *Schema) IsFloat() bool {
+	return s.Type == "float" || s.Type == "float64"
+}
+
+func (s *Schema) IsRequired(m *Method) bool {
+	req, ok := s.Required[m.ID]
+	return ok && req
+}
+
 func (sc *Schema) UpdateSchemaRegistry(sr *SchemaRegistry) {
 	sc.SchemaCentral = sr
 	for k, v := range sc.Properties {

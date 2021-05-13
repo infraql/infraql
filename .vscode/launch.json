@@ -166,6 +166,20 @@
       ],
     },
     {
+      "name": "SHOW INSERT /*+ REQUIRED */... ;\" -- prebuilt with cmake",
+      "type": "go",
+      "request": "launch",
+      "mode": "exec",
+      "program": "${workspaceFolder}/build/infraql",
+      "args": [
+        "exec",
+        "--keyfilepath=${workspaceFolder}/keys/sa-key.json",
+        "show insert /*+ REQUIRED */ into google.compute.addresses;",
+        "-o",
+        "pptext"
+      ],
+    },
+    {
       "name": "SHOW PROVIDERS... ;\" -- prebuilt with cmake",
       "type": "go",
       "request": "launch",
