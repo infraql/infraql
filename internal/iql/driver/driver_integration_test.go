@@ -10,6 +10,7 @@ import (
 	"bufio"
 
 	. "infraql/internal/iql/driver"
+	"infraql/internal/iql/util"
 
 	"infraql/internal/iql/config"
 	"infraql/internal/iql/entryutil"
@@ -45,13 +46,24 @@ func TestSimpleSelectGoogleComputeInstanceDriver(t *testing.T) {
 	testhttpapi.StartServer(t, exp)
 	provider.DummyAuth = true
 
-	handlerCtx, err := handler.GetHandlerCtx(testobjects.SimpleSelectGoogleComputeInstance, *runtimeCtx, lrucache.NewLRUCache(int64(runtimeCtx.QueryCacheSize)))
+	sqlEng, err := infraqltestutil.BuildSQLEngine(*runtimeCtx)
+	if err != nil {
+		t.Fatalf("Test failed: %v", err)
+	}
+
+	handlerCtx, err := handler.GetHandlerCtx(testobjects.SimpleSelectGoogleComputeInstance, *runtimeCtx, lrucache.NewLRUCache(int64(runtimeCtx.QueryCacheSize)), sqlEng)
 	handlerCtx.Outfile = os.Stdout
 	handlerCtx.OutErrFile = os.Stderr
 
 	if err != nil {
 		t.Fatalf("Test failed: %v", err)
 	}
+
+	tc, err := entryutil.GetTxnCounterManager(handlerCtx)
+	if err != nil {
+		t.Fatalf("Test failed: %v", err)
+	}
+	handlerCtx.TxnCounterMgr = tc
 
 	ProcessQuery(handlerCtx)
 
@@ -63,10 +75,55 @@ func TestSimpleSelectGoogleComputeInstanceDriverOutput(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Test failed: %v", err)
 	}
+	sqlEngine, err := infraqltestutil.BuildSQLEngine(*runtimeCtx)
+	if err != nil {
+		t.Fatalf("Test failed: %v", err)
+	}
 
 	testSubject := func(t *testing.T, outFile *bufio.Writer) {
 
-		handlerCtx, err := entryutil.BuildHandlerContext(*runtimeCtx, strings.NewReader(""), lrucache.NewLRUCache(int64(runtimeCtx.QueryCacheSize)))
+		handlerCtx, err := entryutil.BuildHandlerContext(*runtimeCtx, strings.NewReader(""), lrucache.NewLRUCache(int64(runtimeCtx.QueryCacheSize)), sqlEngine)
+		if err != nil {
+			t.Fatalf("Test failed: %v", err)
+		}
+
+		tc, err := entryutil.GetTxnCounterManager(handlerCtx)
+		if err != nil {
+			t.Fatalf("Test failed: %v", err)
+		}
+		handlerCtx.TxnCounterMgr = tc
+
+		handlerCtx.Outfile = outFile
+		handlerCtx.OutErrFile = os.Stderr
+
+		if err != nil {
+			t.Fatalf("Test failed: %v", err)
+		}
+
+		handlerCtx.Query = testobjects.SimpleSelectGoogleComputeInstance
+		response := querysubmit.SubmitQuery(&handlerCtx)
+		handlerCtx.Outfile = outFile
+		responsehandler.HandleResponse(&handlerCtx, response)
+	}
+
+	infraqltestutil.SetupSimpleSelectGoogleComputeInstance(t)
+	infraqltestutil.RunCaptureTestAgainstFiles(t, testSubject, []string{testobjects.ExpectedSimpleSelectGoogleComputeInstanceTextFile01, testobjects.ExpectedSimpleSelectGoogleComputeInstanceTextFile02})
+
+}
+
+func TestSimpleSelectGoogleComputeInstanceDriverOutputRepeated(t *testing.T) {
+	runtimeCtx, err := infraqltestutil.GetRuntimeCtx(config.GetGoogleProviderString(), "text")
+	if err != nil {
+		t.Fatalf("Test failed: %v", err)
+	}
+	sqlEngine, err := infraqltestutil.BuildSQLEngine(*runtimeCtx)
+	if err != nil {
+		t.Fatalf("Test failed: %v", err)
+	}
+
+	testSubject := func(t *testing.T, outFile *bufio.Writer) {
+
+		handlerCtx, err := entryutil.BuildHandlerContext(*runtimeCtx, strings.NewReader(""), lrucache.NewLRUCache(int64(runtimeCtx.QueryCacheSize)), sqlEngine)
 		if err != nil {
 			t.Fatalf("Test failed: %v", err)
 		}
@@ -78,10 +135,16 @@ func TestSimpleSelectGoogleComputeInstanceDriverOutput(t *testing.T) {
 			t.Fatalf("Test failed: %v", err)
 		}
 
+		tc, err := entryutil.GetTxnCounterManager(handlerCtx)
+		if err != nil {
+			t.Fatalf("Test failed: %v", err)
+		}
+		handlerCtx.TxnCounterMgr = tc
+
 		handlerCtx.Query = testobjects.SimpleSelectGoogleComputeInstance
-		response := querysubmit.SubmitQuery(handlerCtx)
+		response := querysubmit.SubmitQuery(&handlerCtx)
 		handlerCtx.Outfile = outFile
-		responsehandler.HandleResponse(handlerCtx, response)
+		responsehandler.HandleResponse(&handlerCtx, response)
 	}
 
 	infraqltestutil.SetupSimpleSelectGoogleComputeInstance(t)
@@ -94,10 +157,14 @@ func TestSimpleSelectGoogleContainerSubnetworksAllowedDriverOutput(t *testing.T)
 	if err != nil {
 		t.Fatalf("Test failed: %v", err)
 	}
+	sqlEngine, err := infraqltestutil.BuildSQLEngine(*runtimeCtx)
+	if err != nil {
+		t.Fatalf("Test failed: %v", err)
+	}
 
 	testSubject := func(t *testing.T, outFile *bufio.Writer) {
 
-		handlerCtx, err := entryutil.BuildHandlerContext(*runtimeCtx, strings.NewReader(""), lrucache.NewLRUCache(int64(runtimeCtx.QueryCacheSize)))
+		handlerCtx, err := entryutil.BuildHandlerContext(*runtimeCtx, strings.NewReader(""), lrucache.NewLRUCache(int64(runtimeCtx.QueryCacheSize)), sqlEngine)
 		if err != nil {
 			t.Fatalf("Test failed: %v", err)
 		}
@@ -109,10 +176,16 @@ func TestSimpleSelectGoogleContainerSubnetworksAllowedDriverOutput(t *testing.T)
 			t.Fatalf("Test failed: %v", err)
 		}
 
+		tc, err := entryutil.GetTxnCounterManager(handlerCtx)
+		if err != nil {
+			t.Fatalf("Test failed: %v", err)
+		}
+		handlerCtx.TxnCounterMgr = tc
+
 		handlerCtx.Query = testobjects.SimpleSelectGoogleContainerSubnetworks
-		response := querysubmit.SubmitQuery(handlerCtx)
+		response := querysubmit.SubmitQuery(&handlerCtx)
 		handlerCtx.Outfile = outFile
-		responsehandler.HandleResponse(handlerCtx, response)
+		responsehandler.HandleResponse(&handlerCtx, response)
 	}
 
 	infraqltestutil.SetupSimpleSelectGoogleContainerAggAllowedSubnetworks(t)
@@ -125,10 +198,14 @@ func TestSimpleInsertGoogleComputeNetworkAsync(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Test failed: %v", err)
 	}
+	sqlEngine, err := infraqltestutil.BuildSQLEngine(*runtimeCtx)
+	if err != nil {
+		t.Fatalf("Test failed: %v", err)
+	}
 
 	testSubject := func(t *testing.T, outFile *bufio.Writer) {
 
-		handlerCtx, err := entryutil.BuildHandlerContext(*runtimeCtx, strings.NewReader(""), lrucache.NewLRUCache(int64(runtimeCtx.QueryCacheSize)))
+		handlerCtx, err := entryutil.BuildHandlerContext(*runtimeCtx, strings.NewReader(""), lrucache.NewLRUCache(int64(runtimeCtx.QueryCacheSize)), sqlEngine)
 		if err != nil {
 			t.Fatalf("Test failed: %v", err)
 		}
@@ -140,10 +217,16 @@ func TestSimpleInsertGoogleComputeNetworkAsync(t *testing.T) {
 			t.Fatalf("Test failed: %v", err)
 		}
 
+		tc, err := entryutil.GetTxnCounterManager(handlerCtx)
+		if err != nil {
+			t.Fatalf("Test failed: %v", err)
+		}
+		handlerCtx.TxnCounterMgr = tc
+
 		handlerCtx.Query = testobjects.SimpleInsertComputeNetwork
-		response := querysubmit.SubmitQuery(handlerCtx)
+		response := querysubmit.SubmitQuery(&handlerCtx)
 		handlerCtx.Outfile = outFile
-		responsehandler.HandleResponse(handlerCtx, response)
+		responsehandler.HandleResponse(&handlerCtx, response)
 	}
 
 	infraqltestutil.SetupSimpleInsertGoogleComputeNetworks(t)
@@ -157,9 +240,13 @@ func TestK8sTheHardWayAsync(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Test failed: %v", err)
 	}
+	sqlEngine, err := infraqltestutil.BuildSQLEngine(*runtimeCtx)
+	if err != nil {
+		t.Fatalf("Test failed: %v", err)
+	}
 
 	testSubject := func(t *testing.T, outFile *bufio.Writer) {
-		k8sthwRenderedFile, err := infraqltestutil.GetFilePathFromRepositoryRoot(testobjects.ExpectedK8STheHardWayRenderedFile)
+		k8sthwRenderedFile, err := util.GetFilePathFromRepositoryRoot(testobjects.ExpectedK8STheHardWayRenderedFile)
 		if err != nil {
 			t.Fatalf("Test failed: %v", err)
 		}
@@ -170,7 +257,7 @@ func TestK8sTheHardWayAsync(t *testing.T) {
 		runtimeCtx.InfilePath = k8sthwRenderedFile
 		runtimeCtx.CSVHeadersDisable = true
 
-		handlerCtx, err := entryutil.BuildHandlerContext(*runtimeCtx, strings.NewReader(""), lrucache.NewLRUCache(int64(runtimeCtx.QueryCacheSize)))
+		handlerCtx, err := entryutil.BuildHandlerContext(*runtimeCtx, strings.NewReader(""), lrucache.NewLRUCache(int64(runtimeCtx.QueryCacheSize)), sqlEngine)
 		if err != nil {
 			t.Fatalf("Test failed: %v", err)
 		}
@@ -181,6 +268,12 @@ func TestK8sTheHardWayAsync(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Test failed: %v", err)
 		}
+
+		tc, err := entryutil.GetTxnCounterManager(handlerCtx)
+		if err != nil {
+			t.Fatalf("Test failed: %v", err)
+		}
+		handlerCtx.TxnCounterMgr = tc
 
 		handlerCtx.RawQuery = strings.TrimSpace(string(megaQueryConcat))
 		ProcessQuery(handlerCtx)
@@ -199,7 +292,11 @@ func TestSimpleShowResourcesFiltered(t *testing.T) {
 		if err != nil {
 			t.Fatalf("TestSimpleShowResourcesFiltered failed: %v", err)
 		}
-		showInsertFile, err := infraqltestutil.GetFilePathFromRepositoryRoot(testobjects.SimpleShowResourcesFilteredFile)
+		sqlEngine, err := infraqltestutil.BuildSQLEngine(*runtimeCtx)
+		if err != nil {
+			t.Fatalf("Test failed: %v", err)
+		}
+		showInsertFile, err := util.GetFilePathFromRepositoryRoot(testobjects.SimpleShowResourcesFilteredFile)
 		if err != nil {
 			t.Fatalf("TestSimpleShowResourcesFiltered failed: %v", err)
 		}
@@ -212,13 +309,19 @@ func TestSimpleShowResourcesFiltered(t *testing.T) {
 			t.Fatalf("Test failed: %v", err)
 		}
 
-		handlerCtx, err := entryutil.BuildHandlerContext(*runtimeCtx, rdr, lrucache.NewLRUCache(int64(runtimeCtx.QueryCacheSize)))
+		handlerCtx, err := entryutil.BuildHandlerContext(*runtimeCtx, rdr, lrucache.NewLRUCache(int64(runtimeCtx.QueryCacheSize)), sqlEngine)
 		if err != nil {
 			t.Fatalf("Test failed: %v", err)
 		}
 
 		handlerCtx.Outfile = outFile
 		handlerCtx.OutErrFile = os.Stderr
+
+		tc, err := entryutil.GetTxnCounterManager(handlerCtx)
+		if err != nil {
+			t.Fatalf("Test failed: %v", err)
+		}
+		handlerCtx.TxnCounterMgr = tc
 
 		ProcessQuery(handlerCtx)
 	}
@@ -235,11 +338,15 @@ func TestSimpleDryRunK8sTheHardWayDriver(t *testing.T) {
 		if err != nil {
 			t.Fatalf("TestSimpleDryRunDriver failed: %v", err)
 		}
-		templateFile, err := infraqltestutil.GetFilePathFromRepositoryRoot(testobjects.K8STheHardWayTemplateFile)
+		sqlEngine, err := infraqltestutil.BuildSQLEngine(*runtimeCtx)
+		if err != nil {
+			t.Fatalf("Test failed: %v", err)
+		}
+		templateFile, err := util.GetFilePathFromRepositoryRoot(testobjects.K8STheHardWayTemplateFile)
 		if err != nil {
 			t.Fatalf("TestSimpleDryRunDriver failed: %v", err)
 		}
-		templateCtxFile, err := infraqltestutil.GetFilePathFromRepositoryRoot(testobjects.K8STheHardWayTemplateContextFile)
+		templateCtxFile, err := util.GetFilePathFromRepositoryRoot(testobjects.K8STheHardWayTemplateContextFile)
 		if err != nil {
 			t.Fatalf("TestSimpleDryRunDriver failed: %v", err)
 		}
@@ -253,13 +360,19 @@ func TestSimpleDryRunK8sTheHardWayDriver(t *testing.T) {
 			t.Fatalf("Test failed: %v", err)
 		}
 
-		handlerCtx, err := entryutil.BuildHandlerContext(*runtimeCtx, rdr, lrucache.NewLRUCache(int64(runtimeCtx.QueryCacheSize)))
+		handlerCtx, err := entryutil.BuildHandlerContext(*runtimeCtx, rdr, lrucache.NewLRUCache(int64(runtimeCtx.QueryCacheSize)), sqlEngine)
 		if err != nil {
 			t.Fatalf("Test failed: %v", err)
 		}
 
 		handlerCtx.Outfile = outFile
 		handlerCtx.OutErrFile = os.Stderr
+
+		tc, err := entryutil.GetTxnCounterManager(handlerCtx)
+		if err != nil {
+			t.Fatalf("Test failed: %v", err)
+		}
+		handlerCtx.TxnCounterMgr = tc
 
 		ProcessDryRun(handlerCtx)
 	}
@@ -276,7 +389,11 @@ func TestSimpleShowInsertComputeAddressesRequired(t *testing.T) {
 		if err != nil {
 			t.Fatalf("TestSimpleTemplateComputeAddressesRequired failed: %v", err)
 		}
-		showInsertFile, err := infraqltestutil.GetFilePathFromRepositoryRoot(testobjects.ShowInsertAddressesRequiredInputFile)
+		sqlEngine, err := infraqltestutil.BuildSQLEngine(*runtimeCtx)
+		if err != nil {
+			t.Fatalf("Test failed: %v", err)
+		}
+		showInsertFile, err := util.GetFilePathFromRepositoryRoot(testobjects.ShowInsertAddressesRequiredInputFile)
 		if err != nil {
 			t.Fatalf("TestSimpleTemplateComputeAddressesRequired failed: %v", err)
 		}
@@ -288,13 +405,19 @@ func TestSimpleShowInsertComputeAddressesRequired(t *testing.T) {
 			t.Fatalf("Test failed: %v", err)
 		}
 
-		handlerCtx, err := entryutil.BuildHandlerContext(*runtimeCtx, rdr, lrucache.NewLRUCache(int64(runtimeCtx.QueryCacheSize)))
+		handlerCtx, err := entryutil.BuildHandlerContext(*runtimeCtx, rdr, lrucache.NewLRUCache(int64(runtimeCtx.QueryCacheSize)), sqlEngine)
 		if err != nil {
 			t.Fatalf("Test failed: %v", err)
 		}
 
 		handlerCtx.Outfile = outFile
 		handlerCtx.OutErrFile = os.Stderr
+
+		tc, err := entryutil.GetTxnCounterManager(handlerCtx)
+		if err != nil {
+			t.Fatalf("Test failed: %v", err)
+		}
+		handlerCtx.TxnCounterMgr = tc
 
 		ProcessQuery(handlerCtx)
 	}

@@ -8,6 +8,7 @@ import (
 	"infraql/internal/iql/dto"
 	"infraql/internal/iql/googlediscovery"
 	"infraql/internal/iql/metadata"
+	"infraql/internal/iql/sqlengine"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -24,11 +25,12 @@ const (
 )
 
 type IDiscoveryStore interface {
-	ProcessDiscoveryDoc(string, string, dto.RuntimeCtx, func([]byte) (map[string]interface{}, error), cache.IMarshaller) (map[string]interface{}, error)
+	ProcessDiscoveryDoc(string, string, dto.RuntimeCtx, string, func([]byte, sqlengine.SQLEngine, string) (map[string]interface{}, error), cache.IMarshaller) (map[string]interface{}, error)
 }
 
 type TTLDiscoveryStore struct {
-	ttlCache cache.IKeyValCache
+	ttlCache  cache.IKeyValCache
+	sqlengine sqlengine.SQLEngine
 }
 
 type IDiscoveryAdapter interface {
@@ -39,27 +41,30 @@ type IDiscoveryAdapter interface {
 }
 
 type BasicDiscoveryAdapter struct {
+	alias              string
 	apiDiscoveryDocUrl string
 	discoveryStore     IDiscoveryStore
 	cacheDir           string
 	runtimeCtx         *dto.RuntimeCtx
-	rootDocParser      func(bytes []byte) (map[string]interface{}, error)
-	serviceDocParser   func(bytes []byte) (map[string]interface{}, error)
+	rootDocParser      func(bytes []byte, dbEngine sqlengine.SQLEngine, alias string) (map[string]interface{}, error)
+	serviceDocParser   func(bytes []byte, dbEngine sqlengine.SQLEngine, alias string) (map[string]interface{}, error)
 	rootMarshaller     cache.IMarshaller
 	serviceMarshaller  cache.IMarshaller
 }
 
 func NewBasicDiscoveryAdapter(
+	alias string,
 	apiDiscoveryDocUrl string,
 	discoveryStore IDiscoveryStore,
 	cacheDir string,
 	runtimeCtx *dto.RuntimeCtx,
-	rootDocParser func(bytes []byte) (map[string]interface{}, error),
-	serviceDocParser func(bytes []byte) (map[string]interface{}, error),
+	rootDocParser func(bytes []byte, dbEngine sqlengine.SQLEngine, alias string) (map[string]interface{}, error),
+	serviceDocParser func(bytes []byte, dbEngine sqlengine.SQLEngine, alias string) (map[string]interface{}, error),
 	rootMarshaller cache.IMarshaller,
 	serviceMarshaller cache.IMarshaller,
 ) IDiscoveryAdapter {
 	return &BasicDiscoveryAdapter{
+		alias:              alias,
 		apiDiscoveryDocUrl: apiDiscoveryDocUrl,
 		discoveryStore:     discoveryStore,
 		cacheDir:           cacheDir,
@@ -76,11 +81,11 @@ func (adp *BasicDiscoveryAdapter) getServiceDiscoveryDoc(serviceKey string, runt
 	if component == nil || err != nil {
 		return nil, err
 	}
-	return adp.discoveryStore.ProcessDiscoveryDoc(component.Service.DiscoveryDoc, adp.cacheDir, runtimeCtx, adp.serviceDocParser, adp.serviceMarshaller)
+	return adp.discoveryStore.ProcessDiscoveryDoc(component.Service.DiscoveryDoc, adp.cacheDir, runtimeCtx, fmt.Sprintf("%s.%s", adp.alias, serviceKey), adp.serviceDocParser, adp.serviceMarshaller)
 }
 
 func (adp *BasicDiscoveryAdapter) GetServiceHandlesMap() (map[string]metadata.ServiceHandle, error) {
-	disDoc, err := adp.discoveryStore.ProcessDiscoveryDoc(adp.apiDiscoveryDocUrl, adp.cacheDir, *adp.runtimeCtx, adp.rootDocParser, adp.rootMarshaller)
+	disDoc, err := adp.discoveryStore.ProcessDiscoveryDoc(adp.apiDiscoveryDocUrl, adp.cacheDir, *adp.runtimeCtx, adp.alias, adp.rootDocParser, adp.rootMarshaller)
 	if err != nil {
 		return nil, err
 	}
@@ -148,60 +153,70 @@ func (adp *BasicDiscoveryAdapter) GetResourcesMap(serviceKey string) (map[string
 	if component == nil || err != nil {
 		return nil, err
 	}
-	disDoc, err := adp.discoveryStore.ProcessDiscoveryDoc(component.Service.DiscoveryDoc, adp.cacheDir, *adp.runtimeCtx, adp.serviceDocParser, adp.serviceMarshaller)
+	disDoc, err := adp.discoveryStore.ProcessDiscoveryDoc(component.Service.DiscoveryDoc, adp.cacheDir, *adp.runtimeCtx, fmt.Sprintf("%s.%s", adp.alias, serviceKey), adp.serviceDocParser, adp.serviceMarshaller)
+	if err != nil {
+		return nil, err
+	}
 	return disDoc["resources"].(map[string]metadata.Resource), err
 }
 
-func NewTTLDiscoveryStore(runtimeCtx dto.RuntimeCtx, cacheName string, size int, ttl int, marshaller cache.IMarshaller) IDiscoveryStore {
+func NewTTLDiscoveryStore(dbEngine sqlengine.SQLEngine, runtimeCtx dto.RuntimeCtx, cacheName string, size int, ttl int, marshaller cache.IMarshaller, sqlengine sqlengine.SQLEngine, alias string) IDiscoveryStore {
 	return &TTLDiscoveryStore{
-		ttlCache: cache.NewTTLMap(runtimeCtx, cacheName, size, ttl, marshaller),
+		ttlCache:  cache.NewTTLMap(dbEngine, runtimeCtx, cacheName, size, ttl, marshaller),
+		sqlengine: sqlengine,
 	}
 }
 
-func DownloadDiscoveryDoc(url string, runtimeCtx dto.RuntimeCtx) io.ReadCloser {
+func DownloadDiscoveryDoc(url string, runtimeCtx dto.RuntimeCtx) (io.ReadCloser, error) {
 	httpClient := http.Client{
 		Timeout: time.Second * time.Duration(runtimeCtx.APIRequestTimeout),
 	}
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
-		log.Fatal(err)
+		return nil, err
 	}
 	res, getErr := httpClient.Do(req)
 	if getErr != nil {
-		log.Fatal(getErr)
+		return nil, err
 	}
-	return res.Body
+	if res.StatusCode >= 400 {
+		return nil, fmt.Errorf("discovery doc download for '%s' failed with code = %d", url, res.StatusCode)
+	}
+	return res.Body, nil
 }
 
-func defaultParser(bytes []byte) (map[string]interface{}, error) {
+func defaultParser(bytes []byte, dbEngine sqlengine.SQLEngine, alias string) (map[string]interface{}, error) {
 	var result map[string]interface{}
 	jsonErr := json.Unmarshal(bytes, &result)
 	return result, jsonErr
 }
 
-func parseDiscoveryDoc(bodyBytes []byte, parser func([]byte) (map[string]interface{}, error)) map[string]interface{} {
-	result, jsonErr := parser(bodyBytes)
+func parseDiscoveryDoc(bodyBytes []byte, dbEngine sqlengine.SQLEngine, alias string, parser func([]byte, sqlengine.SQLEngine, string) (map[string]interface{}, error)) (map[string]interface{}, error) {
+	result, jsonErr := parser(bodyBytes, dbEngine, alias)
 	if jsonErr != nil {
-		log.Fatal(jsonErr)
+		return nil, jsonErr
 	}
-	return result
+	return result, nil
 }
 
-func processDiscoveryDoc(url string, cacheDir string, fileMode os.FileMode, runtimeCtx dto.RuntimeCtx, parser func([]byte) (map[string]interface{}, error)) map[string]interface{} {
-	body := DownloadDiscoveryDoc(url, runtimeCtx)
+func processDiscoveryDoc(url string, cacheDir string, fileMode os.FileMode, runtimeCtx dto.RuntimeCtx, dbEngine sqlengine.SQLEngine, alias string, parser func([]byte, sqlengine.SQLEngine, string) (map[string]interface{}, error)) (map[string]interface{}, error) {
+	body, err := DownloadDiscoveryDoc(url, runtimeCtx)
+	if err != nil {
+		return nil, err
+	}
 	if body != nil {
 		defer body.Close()
 	}
 	bodyBytes, readErr := ioutil.ReadAll(body)
 	if readErr != nil {
-		log.Fatal(readErr)
+		return nil, readErr
 	}
 
 	// TODO: convert to metadata
-	return parseDiscoveryDoc(bodyBytes, parser)
+	return parseDiscoveryDoc(bodyBytes, dbEngine, alias, parser)
 }
 
-func (store *TTLDiscoveryStore) ProcessDiscoveryDoc(url string, cacheDir string, runtimeCtx dto.RuntimeCtx, parser func([]byte) (map[string]interface{}, error), marshaller cache.IMarshaller) (map[string]interface{}, error) {
+func (store *TTLDiscoveryStore) ProcessDiscoveryDoc(url string, cacheDir string, runtimeCtx dto.RuntimeCtx, alias string, parser func([]byte, sqlengine.SQLEngine, string) (map[string]interface{}, error), marshaller cache.IMarshaller) (map[string]interface{}, error) {
 	if parser == nil {
 		parser = defaultParser
 	}
@@ -232,7 +247,7 @@ func (store *TTLDiscoveryStore) ProcessDiscoveryDoc(url string, cacheDir string,
 		log.Infoln(fmt.Sprintf("coud not retrieve discovery doc from cache, type = %T", val))
 	}
 	if runtimeCtx.WorkOffline {
-		retVal, err = processDiscoveryDocFromLocal(url, cacheDir, parser)
+		retVal, err = processDiscoveryDocFromLocal(url, cacheDir, store.sqlengine, alias, parser)
 		if retVal != nil && err == nil {
 			log.Infoln("placing discovery doc into cache")
 			store.ttlCache.Put(url, retVal, marshaller)
@@ -242,13 +257,28 @@ func (store *TTLDiscoveryStore) ProcessDiscoveryDoc(url string, cacheDir string,
 		}
 		return retVal, err
 	}
-	retVal = processDiscoveryDoc(url, cacheDir, fileMode, runtimeCtx, parser)
+	retVal, err = processDiscoveryDoc(url, cacheDir, fileMode, runtimeCtx, store.sqlengine, alias, parser)
+	if err != nil {
+		return nil, err
+	}
 	log.Infoln("placing discovery doc into cache")
 	store.ttlCache.Put(url, retVal, marshaller)
+	db, err := store.sqlengine.GetDB()
+	if err != nil {
+		return nil, err
+	}
+	txn, err := db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	err = txn.Commit()
+	if err != nil {
+		return nil, err
+	}
 	return retVal, err
 }
 
-func processDiscoveryDocFromLocal(url string, cacheDir string, parser func([]byte) (map[string]interface{}, error)) (map[string]interface{}, error) {
+func processDiscoveryDocFromLocal(url string, cacheDir string, dbEngine sqlengine.SQLEngine, alias string, parser func([]byte, sqlengine.SQLEngine, string) (map[string]interface{}, error)) (map[string]interface{}, error) {
 	_, fileName := path.Split(url)
 	fullPath := filepath.Join(cacheDir, fileName)
 	bodyBytes, readErr := ioutil.ReadFile(fullPath)
@@ -256,5 +286,5 @@ func processDiscoveryDocFromLocal(url string, cacheDir string, parser func([]byt
 		log.Infoln(fmt.Sprintf(`cannot process discovery doc with url = "%s", cacheDir = "%s", fullPath = "%s"`, url, cacheDir, fullPath))
 		return nil, readErr
 	}
-	return parseDiscoveryDoc(bodyBytes, parser), readErr
+	return parseDiscoveryDoc(bodyBytes, dbEngine, alias, parser)
 }

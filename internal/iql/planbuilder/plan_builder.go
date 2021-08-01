@@ -2,6 +2,7 @@ package planbuilder
 
 import (
 	"fmt"
+	"infraql/internal/iql/astvisit"
 	"infraql/internal/iql/dto"
 	"infraql/internal/iql/handler"
 	"infraql/internal/iql/iqlerror"
@@ -71,7 +72,7 @@ func createInstructionFor(handlerCtx *handler.HandlerContext, stmt sqlparser.Sta
 }
 
 func handleAuth(handlerCtx *handler.HandlerContext, node *sqlparser.Auth) (plan.IPrimitive, error) {
-	primitiveGenerator := newPrimitiveGenerator(node)
+	primitiveGenerator := newPrimitiveGenerator(node, handlerCtx)
 	prov, err := handlerCtx.GetProvider(node.Provider)
 	if err != nil {
 		return nil, err
@@ -98,7 +99,7 @@ func handleAuth(handlerCtx *handler.HandlerContext, node *sqlparser.Auth) (plan.
 }
 
 func handleAuthRevoke(handlerCtx *handler.HandlerContext, node *sqlparser.AuthRevoke) (plan.IPrimitive, error) {
-	primitiveGenerator := newPrimitiveGenerator(node)
+	primitiveGenerator := newPrimitiveGenerator(node, handlerCtx)
 	err := primitiveGenerator.analyzeStatement(handlerCtx, node)
 	if err != nil {
 		return nil, err
@@ -119,12 +120,12 @@ func handleAuthRevoke(handlerCtx *handler.HandlerContext, node *sqlparser.AuthRe
 }
 
 func handleDescribe(handlerCtx *handler.HandlerContext, node *sqlparser.DescribeTable) (plan.IPrimitive, error) {
-	primitiveGenerator := newPrimitiveGenerator(node)
+	primitiveGenerator := newPrimitiveGenerator(node, handlerCtx)
 	err := primitiveGenerator.analyzeStatement(handlerCtx, node)
 	if err != nil {
 		return nil, err
 	}
-	md, err := primitiveGenerator.PrimitiveBuilder.GetTable(node.Table)
+	md, err := primitiveGenerator.PrimitiveBuilder.GetTable(node)
 	if err != nil {
 		return nil, err
 	}
@@ -151,7 +152,7 @@ func handleDescribe(handlerCtx *handler.HandlerContext, node *sqlparser.Describe
 
 func handleSelect(handlerCtx *handler.HandlerContext, node *sqlparser.Select) (plan.IPrimitive, error) {
 	if !handlerCtx.RuntimeContext.TestWithoutApiCalls {
-		primitiveGenerator := newPrimitiveGenerator(node)
+		primitiveGenerator := newPrimitiveGenerator(node, handlerCtx)
 		err := primitiveGenerator.analyzeStatement(handlerCtx, node)
 		if err != nil {
 			return nil, err
@@ -170,46 +171,46 @@ func handleSelect(handlerCtx *handler.HandlerContext, node *sqlparser.Select) (p
 
 func handleDelete(handlerCtx *handler.HandlerContext, node *sqlparser.Delete) (plan.IPrimitive, error) {
 	if !handlerCtx.RuntimeContext.TestWithoutApiCalls {
-		primitiveGenerator := newPrimitiveGenerator(node)
+		primitiveGenerator := newPrimitiveGenerator(node, handlerCtx)
 		err := primitiveGenerator.analyzeStatement(handlerCtx, node)
 		if err != nil {
 			return nil, err
 		}
 		return primitiveGenerator.deleteExecutor(handlerCtx, node)
 	} else {
-		return primitivebuilder.NewHTTPRestPrimitive(nil, nil), nil
+		return primitivebuilder.NewHTTPRestPrimitive(nil, nil, nil), nil
 	}
 	return nil, nil
 }
 
 func handleInsert(handlerCtx *handler.HandlerContext, node *sqlparser.Insert) (plan.IPrimitive, error) {
 	if !handlerCtx.RuntimeContext.TestWithoutApiCalls {
-		primitiveGenerator := newPrimitiveGenerator(node)
+		primitiveGenerator := newPrimitiveGenerator(node, handlerCtx)
 		err := primitiveGenerator.analyzeStatement(handlerCtx, node)
 		if err != nil {
 			return nil, err
 		}
 		return primitiveGenerator.insertExecutor(handlerCtx, node, util.DefaultRowSort)
 	} else {
-		return primitivebuilder.NewHTTPRestPrimitive(nil, nil), nil
+		return primitivebuilder.NewHTTPRestPrimitive(nil, nil, nil), nil
 	}
 	return nil, nil
 }
 
 func handleExec(handlerCtx *handler.HandlerContext, node *sqlparser.Exec) (plan.IPrimitive, error) {
 	if !handlerCtx.RuntimeContext.TestWithoutApiCalls {
-		primitiveGenerator := newPrimitiveGenerator(node)
+		primitiveGenerator := newPrimitiveGenerator(node, handlerCtx)
 		err := primitiveGenerator.analyzeStatement(handlerCtx, node)
 		if err != nil {
 			return nil, err
 		}
 		return primitiveGenerator.execExecutor(handlerCtx, node)
 	}
-	return primitivebuilder.NewHTTPRestPrimitive(nil, nil), nil
+	return primitivebuilder.NewHTTPRestPrimitive(nil, nil, nil), nil
 }
 
 func handleShow(handlerCtx *handler.HandlerContext, node *sqlparser.Show) (plan.IPrimitive, error) {
-	primitiveGenerator := newPrimitiveGenerator(node)
+	primitiveGenerator := newPrimitiveGenerator(node, handlerCtx)
 	err := primitiveGenerator.analyzeStatement(handlerCtx, node)
 	if err != nil {
 		return nil, err
@@ -222,7 +223,7 @@ func handleShow(handlerCtx *handler.HandlerContext, node *sqlparser.Show) (plan.
 }
 
 func handleSleep(handlerCtx *handler.HandlerContext, node *sqlparser.Sleep) (plan.IPrimitive, error) {
-	primitiveGenerator := newPrimitiveGenerator(node)
+	primitiveGenerator := newPrimitiveGenerator(node, handlerCtx)
 	err := primitiveGenerator.analyzeStatement(handlerCtx, node)
 	if err != nil {
 		return nil, err
@@ -231,7 +232,7 @@ func handleSleep(handlerCtx *handler.HandlerContext, node *sqlparser.Sleep) (pla
 }
 
 func handleUse(handlerCtx *handler.HandlerContext, node *sqlparser.Use) (plan.IPrimitive, error) {
-	primitiveGenerator := newPrimitiveGenerator(node)
+	primitiveGenerator := newPrimitiveGenerator(node, handlerCtx)
 	err := primitiveGenerator.analyzeStatement(handlerCtx, node)
 	if err != nil {
 		return nil, err
@@ -276,7 +277,22 @@ func BuildPlanFromContext(handlerCtx *handler.HandlerContext) (*plan.Plan, error
 	if err != nil {
 		return createErroneousPlan(handlerCtx, qPlan, rowSort, err)
 	}
+	s := sqlparser.String(statement)
 	result, err := sqlparser.RewriteAST(statement)
+	if err != nil {
+		return createErroneousPlan(handlerCtx, qPlan, rowSort, err)
+	}
+	vis := astvisit.NewDRMAstVisitor("iql_query_id", false)
+	statement.Accept(vis)
+	provStrSlice := astvisit.ExtractProviderStrings(result.AST)
+	for _, p := range provStrSlice {
+		_, err := handlerCtx.GetProvider(p)
+		if err != nil {
+			return nil, err
+		}
+	}
+	log.Infoln("Recovered query: " + s)
+	log.Infoln("Recovered query from vis: " + vis.GetRewrittenQuery())
 	if err != nil {
 		return createErroneousPlan(handlerCtx, qPlan, rowSort, err)
 	}

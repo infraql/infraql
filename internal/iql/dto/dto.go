@@ -23,6 +23,10 @@ const (
 	ColorSchemeKey            string = "colorscheme"
 	ConfigFilePathKey         string = "configfile"
 	CSVHeadersDisableKey      string = "hideheaders"
+	DbEngineKey               string = "dbengine"
+	DbGenerationIdKey         string = "dbgenerationid"
+	DbFilePathKey             string = "dbfilepath"
+	DbInitFilePathKey         string = "dbinitfilepath"
 	DelimiterKey              string = "delimiter"
 	ErrorPresentationKey      string = "errorpresentation"
 	InfilePathKey             string = "infile"
@@ -34,6 +38,7 @@ const (
 	ProviderRootPathModeKey   string = "providerrootfilemode"
 	ProviderStrKey            string = "provider"
 	QueryCacheSizeKey         string = "querycachesize"
+	ReinitKey                 string = "reinit"
 	TemplateCtxFilePathKey    string = "iqldata"
 	TestWithoutApiCallsKey    string = "testwithoutapicalls"
 	UseNonPreferredAPIsKEy    string = "usenonpreferredapis"
@@ -41,6 +46,11 @@ const (
 	ViperCfgFileNameKey       string = "viperconfigfilename"
 	WorkOfflineKey            string = "offline"
 )
+
+type KeyVal struct {
+	K string
+	V []byte
+}
 
 type BackendMessages struct {
 	WorkingMessages []string
@@ -55,8 +65,8 @@ type AuthCtx struct {
 }
 
 type ExecPayload struct {
-	Payload []byte
-	Header map[string][]string
+	Payload    []byte
+	Header     map[string][]string
 	PayloadMap map[string]interface{}
 }
 
@@ -82,6 +92,10 @@ type RuntimeCtx struct {
 	ColorScheme          string
 	ConfigFilePath       string
 	CSVHeadersDisable    bool
+	DbEngine             string
+	DbFilePath           string
+	DbGenerationId       int
+	DbInitFilePath       string
 	Delimiter            string
 	DryRunFlag           bool
 	ErrorPresentation    string
@@ -93,6 +107,7 @@ type RuntimeCtx struct {
 	ProviderRootPath     string
 	ProviderRootPathMode uint32
 	ProviderStr          string
+	Reinit               bool
 	QueryCacheSize       int
 	TemplateCtxFilePath  string
 	TestWithoutApiCalls  bool
@@ -141,6 +156,14 @@ func (rc *RuntimeCtx) Set(key string, val string) error {
 		rc.ConfigFilePath = val
 	case CSVHeadersDisableKey:
 		retVal = setBool(&rc.CSVHeadersDisable, val)
+	case DbEngineKey:
+		rc.DbEngine = val
+	case DbFilePathKey:
+		rc.DbFilePath = val
+	case DbGenerationIdKey:
+		retVal = setInt(&rc.DbGenerationId, val)
+	case DbInitFilePathKey:
+		rc.DbInitFilePath = val
 	case DelimiterKey:
 		rc.Delimiter = val
 	case DryRunFlagKey:
@@ -163,6 +186,8 @@ func (rc *RuntimeCtx) Set(key string, val string) error {
 		retVal = setUint32(&rc.ProviderRootPathMode, val)
 	case QueryCacheSizeKey:
 		retVal = setInt(&rc.QueryCacheSize, val)
+	case ReinitKey:
+		retVal = setBool(&rc.Reinit, val)
 	case TemplateCtxFilePathKey:
 		rc.TemplateCtxFilePath = val
 	case TestWithoutApiCallsKey:

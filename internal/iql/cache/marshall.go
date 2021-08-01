@@ -70,17 +70,23 @@ func (dm *GoogleRootDiscoveryMarshaller) Unmarshal(item *Item) error {
 func (dm *GoogleRootDiscoveryMarshaller) Marshal(item *Item) error {
 	var err error
 	blob := make(map[string]metadata.ServiceHandle)
-	value, ok := item.Value.(map[string]interface{})
-	if !ok {
-		return fmt.Errorf("Cannot Marshal cache object of type: %T", item.Value)
-	}
-	for k, hn := range value {
-		switch handle := hn.(type) {
-		case metadata.ServiceHandle:
-			blob[k] = handle
-		default:
-			return fmt.Errorf("handle type is %T", handle)
+	switch val := item.Value.(type) {
+	case map[string]metadata.ServiceHandle:
+		for k, hn := range val {
+			blob[k] = hn
 		}
+	case map[string]interface{}:
+		for k, hn := range val {
+			handle, ok := hn.(metadata.ServiceHandle)
+			if ok {
+				blob[k] = handle
+			} else {
+				fmt.Errorf("cannot Marshal value where item where type is %T", hn)
+			}
+
+		}
+	default:
+		return fmt.Errorf("cannot Marshal where type is %T", val)
 	}
 	item.RawValue, err = json.Marshal(blob)
 	return err
@@ -121,6 +127,8 @@ func (dm *GoogleServiceDiscoveryMarshaller) Unmarshal(item *Item) error {
 	blob["schemas"] = wrapperBlob.Schemas
 	so := wrapperBlob.SchemaObjects
 	blob["schemas_parsed"] = so
+	blob["tablespace"] = item.Tablespace
+	blob["tablespace_generation_id"] = item.TablespaceID
 	for _, v := range blob["schemas_parsed"].(map[string]metadata.Schema) {
 		v.UpdateSchemaRegistry(sr)
 	}
@@ -160,6 +168,10 @@ func (dm *GoogleServiceDiscoveryMarshaller) Marshal(item *Item) error {
 			}
 		case "schemas":
 			wrapperBlob.Schemas = tlv.(map[string]interface{})
+		case "tablespace":
+			item.Tablespace = tlv.(string)
+		case "tablespace_generation_id":
+			item.TablespaceID = tlv.(int)
 		}
 	}
 	wrapperBlob.RawResources, err = json.Marshal(resources)
@@ -170,7 +182,7 @@ func (dm *GoogleServiceDiscoveryMarshaller) Marshal(item *Item) error {
 	if err != nil {
 		return err
 	}
-	item.RawValue, err = json.Marshal(*wrapperBlob)
+	item.RawValue, err = json.Marshal(wrapperBlob)
 	return err
 }
 

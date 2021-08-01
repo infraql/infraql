@@ -10,13 +10,35 @@ import (
 	"infraql/internal/iql/dto"
 	"infraql/internal/iql/handler"
 	"infraql/internal/iql/iqlerror"
+	"infraql/internal/iql/sqlengine"
 
 	"infraql/internal/pkg/preprocessor"
+	"infraql/internal/pkg/txncounter"
 
-	lrucache "vitess.io/vitess/go/cache" 
+	lrucache "vitess.io/vitess/go/cache"
 )
 
-func BuildHandlerContext(runtimeCtx dto.RuntimeCtx, rdr io.Reader, lruCache *lrucache.LRUCache) (*handler.HandlerContext, error) {
+func BuildSQLEngine(runtimeCtx dto.RuntimeCtx) (sqlengine.SQLEngine, error) {
+	sqlCfg := sqlengine.NewSQLEngineConfig(runtimeCtx)
+	return sqlengine.NewSQLEngine(sqlCfg)
+}
+
+func GetTxnCounterManager(handlerCtx handler.HandlerContext) (*txncounter.TxnCounterManager, error) {
+	genId, err := handlerCtx.SQLEngine.GetCurrentGenerationId()
+	if err != nil {
+		genId, err = handlerCtx.SQLEngine.GetNextGenerationId()
+		if err != nil {
+			return nil, err
+		}
+	}
+	sessionId, err := handlerCtx.SQLEngine.GetNextSessionId(genId)
+	if err != nil {
+		return nil, err
+	}
+	return txncounter.NewTxnCounterManager(genId, sessionId), nil
+}
+
+func BuildHandlerContext(runtimeCtx dto.RuntimeCtx, rdr io.Reader, lruCache *lrucache.LRUCache, sqlEngine sqlengine.SQLEngine) (handler.HandlerContext, error) {
 	var err error
 	var prepRd, externalTmplRdr io.Reader
 	pp := preprocessor.NewPreprocessor(preprocessor.TripleLessThanToken, preprocessor.TripleGreaterThanToken)
@@ -35,5 +57,5 @@ func BuildHandlerContext(runtimeCtx dto.RuntimeCtx, rdr io.Reader, lruCache *lru
 	var bb []byte
 	bb, err = ioutil.ReadAll(ppRd)
 	iqlerror.PrintErrorAndExitOneIfError(err)
-	return handler.GetHandlerCtx(strings.TrimSpace(string(bb)), runtimeCtx, lruCache)
+	return handler.GetHandlerCtx(strings.TrimSpace(string(bb)), runtimeCtx, lruCache, sqlEngine)
 }

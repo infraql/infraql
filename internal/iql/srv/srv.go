@@ -12,6 +12,7 @@ import (
 
 	"infraql/internal/iql/driver"
 	"infraql/internal/iql/dto"
+	"infraql/internal/iql/entryutil"
 	"infraql/internal/iql/handler"
 
 	lrucache "vitess.io/vitess/go/cache"
@@ -31,7 +32,12 @@ func handleConnection(c net.Conn, runtimeCtx dto.RuntimeCtx, lruCache *lrucache.
 		if temp == "STOP" {
 			break
 		}
-		handlerContext, _ := handler.GetHandlerCtx(netData, runtimeCtx, lruCache)
+		sqlEng, err := entryutil.BuildSQLEngine(runtimeCtx)
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+		handlerContext, _ := handler.GetHandlerCtx(netData, runtimeCtx, lruCache, sqlEng)
 		handlerContext.Outfile = c
 		handlerContext.OutErrFile = c
 		if handlerContext.RuntimeContext.DryRunFlag {

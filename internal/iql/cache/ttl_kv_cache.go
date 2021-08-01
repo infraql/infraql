@@ -3,11 +3,9 @@ package cache
 import (
 	"encoding/json"
 	"fmt"
-	"infraql/internal/iql/config"
 	"infraql/internal/iql/constants"
 	"infraql/internal/iql/dto"
-	"io/ioutil"
-	"os"
+	"infraql/internal/iql/sqlengine"
 	"path/filepath"
 	"sync"
 	"time"
@@ -33,6 +31,8 @@ type Item struct {
 	LastAccess    int64
 	Marshaller    IMarshaller `json:"-"`
 	MarshallerKey string
+	Tablespace    string
+	TablespaceID  int
 }
 
 type TTLMap struct {
@@ -41,31 +41,26 @@ type TTLMap struct {
 	cacheName       string
 	cacheFileSuffix string
 	runtimeCtx      dto.RuntimeCtx
+	dbEngine        sqlengine.SQLEngine
 }
 
 func (m *TTLMap) persistToFile() {
 
-	for _, v := range m.m {
+	for k, v := range m.m {
 		err := v.Marshaller.Marshal(v)
 		if err != nil {
 			log.Infoln(fmt.Sprintf("persist to file Marshal error = %s", err.Error()))
+			continue
 		}
+		log.Debugln(fmt.Sprintf("persisting to cache: k = '%s', v = %v", k, v))
+		blob, jsonErr := json.Marshal(v)
+		if jsonErr != nil {
+			log.Infoln(fmt.Sprintf("persist to file final Marshal error = %s", jsonErr.Error()))
+			continue
+		}
+		log.Debugln(fmt.Sprintf("persisting to cache: k = '%s', blob = %s", k, string(blob)))
+		m.dbEngine.CacheStorePut(k, blob, v.Tablespace, v.TablespaceID)
 	}
-	blob, jsonErr := json.Marshal(m.m)
-	if jsonErr != nil {
-		log.Infoln(fmt.Sprintf("persist to file final Marshal error = %s", jsonErr.Error()))
-	}
-
-	cacheDir := m.getCacheDir("ttl_cache")
-	fullPath := filepath.Join(cacheDir, m.getCacheFileName())
-
-	config.CreateDirIfNotExists(cacheDir, os.FileMode(m.runtimeCtx.ProviderRootPathMode))
-	fileHandle, err := os.Create(fullPath)
-	if err != nil {
-		log.Fatalf("cannot open cache file %s", fullPath)
-	}
-
-	fileHandle.Write(blob)
 }
 
 func (m *TTLMap) getCacheDir(relativePath string) string {
@@ -84,17 +79,18 @@ func (m *TTLMap) getCacheFileName() string {
 }
 
 func (m *TTLMap) restoreFromFile() error {
-	fullPath := filepath.Join(m.getCacheDir("ttl_cache"), m.getCacheFileName())
-	bodyBytes, readErr := ioutil.ReadFile(fullPath)
-	if readErr != nil {
-		return fmt.Errorf(`cannot access TTL Cache file at: "%s"`, fullPath)
-	}
 	im := make(map[string]*Item)
-	err := json.Unmarshal(bodyBytes, &im)
+	cachedKVs, err := m.dbEngine.CacheStoreGetAll()
+	log.Infoln(fmt.Sprintf("len(cachedKVs) = %v", len(cachedKVs)))
 	if err != nil {
 		return err
 	} else {
-		for _, val := range im {
+		for _, kv := range cachedKVs {
+			val := &Item{}
+			jErr := json.Unmarshal(kv.V, val)
+			if jErr != nil {
+				return fmt.Errorf("error unmarshaling kv raw, key = '%s': %v", kv.K, jErr)
+			}
 			marshaller, e := GetMarshaller(val.MarshallerKey)
 			if e != nil {
 				return e
@@ -102,21 +98,23 @@ func (m *TTLMap) restoreFromFile() error {
 			val.Marshaller = marshaller
 			jsonErr := val.Marshaller.Unmarshal(val)
 			if jsonErr != nil {
-				return jsonErr
+				return fmt.Errorf("error unmarshaling kv item, key = '%s': %v", kv.K, jsonErr)
 			}
+			im[kv.K] = val
 		}
 	}
 	m.m = im
 	return nil
 }
 
-func NewTTLMap(runtimeCtx dto.RuntimeCtx, cacheName string, initSize int, maxTTL int, marshaller IMarshaller) IKeyValCache {
+func NewTTLMap(dbEngine sqlengine.SQLEngine, runtimeCtx dto.RuntimeCtx, cacheName string, initSize int, maxTTL int, marshaller IMarshaller) IKeyValCache {
 	log.Infoln(fmt.Sprintf("cache op: created new cache"))
 	m := &TTLMap{
 		m:               make(map[string]*Item, initSize),
 		cacheName:       cacheName,
 		cacheFileSuffix: constants.JsonStr,
 		runtimeCtx:      runtimeCtx,
+		dbEngine:        dbEngine,
 	}
 	restorErr := m.restoreFromFile()
 	if restorErr != nil {
@@ -147,9 +145,9 @@ func (m *TTLMap) Put(k string, v interface{}, marshaller IMarshaller) {
 		return
 	}
 	m.l.Lock()
+	defer m.l.Unlock()
 	log.Debugln(fmt.Sprintf("TTLMap.Put() called for k = %v, v = %v", k, v))
-	it, _ := m.m[k]
-	it = &Item{
+	it := &Item{
 		Value:         v,
 		Marshaller:    marshaller,
 		MarshallerKey: marshaller.GetKey(),
@@ -159,11 +157,15 @@ func (m *TTLMap) Put(k string, v interface{}, marshaller IMarshaller) {
 	it.LastAccess = time.Now().Unix()
 	log.Infoln(fmt.Sprintf("type of interface for Put = %T", v))
 	m.persistToFile()
-	m.l.Unlock()
 }
 
 func (m *TTLMap) Get(k string, marshaller IMarshaller) (v interface{}) {
 	m.l.Lock()
+	i := 0
+	for keyStr, v := range m.m {
+		log.Infoln(fmt.Sprintf("key[%d] = %s, vale type = %T", i, keyStr, v))
+		i++
+	}
 	if it, ok := m.m[k]; ok {
 		v = it.Value
 		log.Infoln(fmt.Sprintf("cache op: succeeded in retrieving %s", k))

@@ -29,6 +29,8 @@ const readlineDir = "readline"
 
 const readlineTmpFile = "readline.tmp"
 
+const defaultDbEngine = "sqlite3"
+
 func GetGoogleProviderString() string {
 	return googleProvider
 }
@@ -77,6 +79,18 @@ func GetDefaultViperConfigFileName() string {
 }
 
 func GetDefaultKeyFilePath() string {
+	return ""
+}
+
+func GetDefaultDbEngine() string {
+	return defaultDbEngine
+}
+
+func GetDefaultDbFilePath() string {
+	return ""
+}
+
+func GetDefaultDbInitFilePath() string {
 	return ""
 }
 

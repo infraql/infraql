@@ -3,13 +3,14 @@ package util
 import (
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 
 	"infraql/internal/iql/dto"
 
-	"vitess.io/vitess/go/vt/sqlparser"
 	"vitess.io/vitess/go/sqltypes"
+	"vitess.io/vitess/go/vt/sqlparser"
 
 	querypb "vitess.io/vitess/go/vt/proto/query"
 )
@@ -25,7 +26,6 @@ var describeRowSortArr []string = []string{
 	"name",
 	"description",
 }
-
 
 func extractExecParams(node *sqlparser.Exec) (map[string]interface{}, error) {
 	paramMap := make(map[string]interface{})
@@ -75,17 +75,22 @@ func ExtractSQLNodeParams(statement sqlparser.SQLNode, insertValOnlyRows map[int
 
 		case *sqlparser.ComparisonExpr:
 			if node.Operator == sqlparser.EqualStr {
-				left, leftOk := node.Left.(*sqlparser.ColName)
-				if !leftOk {
+				switch l := node.Left.(type) {
+				case *sqlparser.ColName:
+					key := l.Name.GetRawVal()
+					switch r := node.Right.(type) {
+					case *sqlparser.SQLVal:
+						val := string(r.Val)
+						paramMap[key] = val
+					default:
+						err = fmt.Errorf("failed to analyse left node of comparison")
+						return true, err
+					}
+				case *sqlparser.FuncExpr:
+				default:
 					err = fmt.Errorf("failed to analyse left node of comparison")
+					return true, err
 				}
-				key := left.Name.GetRawVal()
-				right, rightOk := node.Right.(*sqlparser.SQLVal)
-				if !rightOk {
-					err = fmt.Errorf("failed to analyse right node of comparison")
-				}
-				val := string(right.Val)
-				paramMap[key] = val
 			}
 		}
 		return true, err
@@ -118,6 +123,8 @@ func InterfaceToBytes(subject interface{}, isErrorCol bool) []byte {
 			}
 		}
 		return []byte("{object}")
+	case nil:
+		return []byte("null")
 	default:
 		return []byte("{object}")
 	}
@@ -133,6 +140,14 @@ func arrangeOrderedColumnRow(row map[string]interface{}, columnOrder []string, c
 }
 
 func DefaultRowSort(rowMap map[string]map[string]interface{}) []string {
+	var keys []string
+	for k := range rowMap {
+		keys = append(keys, k)
+	}
+	if keys != nil {
+		sort.Strings(keys)
+		return keys
+	}
 	return []string{}
 }
 

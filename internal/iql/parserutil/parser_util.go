@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"infraql/internal/iql/metadata"
 	"strconv"
+	"strings"
 
 	log "github.com/sirupsen/logrus"
 	"vitess.io/vitess/go/vt/sqlparser"
@@ -24,13 +25,27 @@ func GetTableNameFromTableExpr(node sqlparser.TableExpr) (sqlparser.TableName, e
 	return sqlparser.TableName{}, fmt.Errorf("table expression too colmplex")
 }
 
-func ExtractSelectColumnNames(selStmt *sqlparser.Select) ([]string, error) {
-	var colNames []string
+type ColumnHandle struct {
+	Alias           string
+	Expr            sqlparser.Expr
+	Name            string
+	DecoratedColumn string
+	IsColumn        bool
+	Type            sqlparser.ValType
+	Val             *sqlparser.SQLVal
+}
+
+func NewUnaliasedColumnHandle(name string) ColumnHandle {
+	return ColumnHandle{Name: name}
+}
+
+func ExtractSelectColumnNames(selStmt *sqlparser.Select) ([]ColumnHandle, error) {
+	var colNames []ColumnHandle
 	var err error
 	for _, node := range selStmt.SelectExprs {
 		switch node := node.(type) {
 		case *sqlparser.AliasedExpr:
-			colNames = inferColNameFromExpr(node.Expr, colNames)
+			colNames = append(colNames, inferColNameFromExpr(node))
 		case *sqlparser.StarExpr:
 
 		}
@@ -63,6 +78,20 @@ func ExtractAliasedValColumnData(aliasedExpr *sqlparser.AliasedExpr) (map[string
 		}
 	}
 	return nil, fmt.Errorf("unextractable val only col")
+}
+
+func ExtractStringRepresentationOfValueColumn(expr *sqlparser.SQLVal) string {
+	if expr == nil {
+		return ""
+	}
+	switch expr.Type {
+	case sqlparser.StrVal:
+		return fmt.Sprintf(`'%s'`, string(expr.Val))
+	case sqlparser.IntVal, sqlparser.FloatVal:
+		return string(expr.Val)
+	default:
+		return string(expr.Val)
+	}
 }
 
 func ExtractValuesColumnData(values sqlparser.Values) (map[int]map[int]interface{}, int, error) {
@@ -265,17 +294,78 @@ func GetColumnUsageTypesForExec(exec *sqlparser.Exec) ([]ColumnUsageMetadata, er
 	return colMetaSlice, nil
 }
 
-func inferColNameFromExpr(node sqlparser.Expr, colNames []string) []string {
-	switch node := node.(type) {
+func inferColNameFromExpr(node *sqlparser.AliasedExpr) ColumnHandle {
+	alias := node.As.GetRawVal()
+	retVal := ColumnHandle{
+		Alias: alias,
+		Expr:  node.Expr,
+	}
+	switch expr := node.Expr.(type) {
 	case *sqlparser.ColName:
-		colNames = append(colNames, node.Name.String())
+		retVal.Name = expr.Name.String()
+		retVal.DecoratedColumn = sqlparser.String(expr)
+		retVal.IsColumn = true
 	case *sqlparser.FuncExpr:
 		// As a shortcut, functions are integral types
-		colNames = append(colNames, sqlparser.String(node))
+		funcNameLowered := expr.Name.Lowered()
+		retVal.Name = sqlparser.String(expr)
+		if len(funcNameLowered) >= 4 && funcNameLowered[0:4] == "json" {
+			retVal.DecoratedColumn = strings.ReplaceAll(retVal.Name, `\"`, `"`)
+			return retVal
+		}
+		if len(expr.Exprs) == 1 {
+			switch ex := expr.Exprs[0].(type) {
+			case *sqlparser.AliasedExpr:
+				rv := inferColNameFromExpr(ex)
+				rv.DecoratedColumn = sqlparser.String(expr)
+				rv.Alias = alias
+				return rv
+			}
+		} else {
+			var exprsDecorated []string
+			for _, exp := range expr.Exprs {
+				switch ex := exp.(type) {
+				case *sqlparser.AliasedExpr:
+					rv := inferColNameFromExpr(ex)
+					exprsDecorated = append(exprsDecorated, rv.DecoratedColumn)
+				}
+			}
+			retVal.DecoratedColumn = fmt.Sprintf("%s(%s)", funcNameLowered, strings.Join(exprsDecorated, ", "))
+			return retVal
+		}
+		switch funcNameLowered {
+		case "substr":
+			switch ex := expr.Exprs[0].(type) {
+			case *sqlparser.AliasedExpr:
+				rv := inferColNameFromExpr(ex)
+				rv.DecoratedColumn = sqlparser.String(expr)
+				rv.Alias = alias
+				return rv
+			}
+		default:
+			retVal.DecoratedColumn = sqlparser.String(expr)
+		}
+	case *sqlparser.ConvertExpr:
+		switch ex := expr.Expr.(type) {
+		case *sqlparser.ColName:
+			rv := ColumnHandle{
+				Alias: "",
+				Expr:  ex,
+			}
+			rv.DecoratedColumn = fmt.Sprintf("CAST(%s AS %s)", sqlparser.String(ex), sqlparser.String(expr.Type))
+			rv.Alias = alias
+			return rv
+		}
 	case *sqlparser.SQLVal:
-		colNames = append(colNames, sqlparser.String(node))
+		// As a shortcut, functions are integral types
+		retVal.Name = sqlparser.String(expr)
+		retVal.Type = expr.Type
+		retVal.Val = expr
+		retVal.DecoratedColumn = ExtractStringRepresentationOfValueColumn(expr)
+	default:
+		retVal.DecoratedColumn = sqlparser.String(expr)
 	}
-	return colNames
+	return retVal
 }
 
 func CheckSqlParserTypeVsServiceColumn(colUsage ColumnUsageMetadata) error {

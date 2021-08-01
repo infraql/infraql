@@ -14,6 +14,7 @@ import (
 	"infraql/internal/iql/metadata"
 	"infraql/internal/iql/methodselect"
 	"infraql/internal/iql/relational"
+	"infraql/internal/iql/sqlengine"
 	"infraql/internal/iql/sqltypeutil"
 	"io/ioutil"
 	"net/http"
@@ -52,6 +53,10 @@ type GoogleProvider struct {
 
 func (gp *GoogleProvider) GetDefaultKeyForSelectItems() string {
 	return "items"
+}
+
+func (gp *GoogleProvider) GetDiscoveryGeneration(dbEngine sqlengine.SQLEngine) (int, error) {
+	return dbEngine.GetCurrentDiscoveryGenerationId(gp.GetProviderString())
 }
 
 func (gp *GoogleProvider) GetDefaultKeyForDeleteItems() string {
@@ -119,6 +124,41 @@ func (gp *GoogleProvider) GetMethodForAction(serviceName string, resourceName st
 	return gp.methodSelector.GetMethodForAction(rsc, iqlAction)
 }
 
+func (gp *GoogleProvider) InferDescribeMethod(rsc *metadata.Resource) (*metadata.Method, string, error) {
+	if rsc == nil {
+		return nil, "", fmt.Errorf("cannot infer describe method from nil resource")
+	}
+	var method metadata.Method
+	m, methodPresent := rsc.Methods["get"]
+	if methodPresent {
+		method = m
+		return &method, "get", nil
+	}
+	m, methodPresent = rsc.Methods["aggregatedList"]
+	if methodPresent {
+		method = m
+		return &method, "aggregatedList", nil
+	}
+	m, methodPresent = rsc.Methods["list"]
+	if methodPresent {
+		method = m
+		return &method, "list", nil
+	}
+	var ms []string
+	for k, v := range rsc.Methods {
+		ms = append(ms, k)
+		if strings.HasPrefix(k, "get") {
+			method = v
+			return &method, k, nil
+		}
+		if strings.HasPrefix(k, "list") {
+			method = v
+			return &method, k, nil
+		}
+	}
+	return nil, "", fmt.Errorf("SELECT not supported for this resource, use SHOW METHODS to view available operations for the resource and then invoke a supported method using the EXEC command")
+}
+
 func (gp *GoogleProvider) retrieveSchemaMap(serviceName string, resourceName string) (map[string]metadata.Schema, error) {
 	return gp.discoveryAdapter.GetSchemaMap(serviceName, resourceName)
 }
@@ -127,7 +167,7 @@ func (gp *GoogleProvider) GetSchemaMap(serviceName string, resourceName string) 
 	return gp.discoveryAdapter.GetSchemaMap(serviceName, resourceName)
 }
 
-func (gp *GoogleProvider) GetObjectSchema(runtimeCtx dto.RuntimeCtx, serviceName string, resourceName string, schemaName string) (*metadata.Schema, error) {
+func (gp *GoogleProvider) GetObjectSchema(serviceName string, resourceName string, schemaName string) (*metadata.Schema, error) {
 	sm, err := gp.retrieveSchemaMap(serviceName, resourceName)
 	if err != nil {
 		return nil, err
@@ -408,15 +448,26 @@ func (gp *GoogleProvider) GetResourcesRedacted(currentService string, runtimeCtx
 
 func (gp *GoogleProvider) DescribeResource(serviceName string, resourceName string, runtimeCtx dto.RuntimeCtx, extended bool, full bool) (*metadata.Schema, []string, error) {
 	header := gp.getDescribeHeader(extended)
+	canonicalError := fmt.Errorf("can't find DESCRIBE schema for service '%s' resource '%s'", serviceName, resourceName)
 
 	describeErr := fmt.Errorf("Error generating DESCRIBE for service = '%s' and resource = '%s'", serviceName, resourceName)
 	rescources, err := gp.discoveryAdapter.GetResourcesMap(serviceName)
+	if err != nil {
+		return nil, nil, canonicalError
+	}
 	rsc, ok := rescources[resourceName]
 	if !ok {
 		return nil, header, describeErr
 	}
-	schemaName := rsc.Methods["get"].ResponseType.Type
+	m, _, err := gp.InferDescribeMethod(&rsc)
+	if err != nil {
+		return nil, nil, canonicalError
+	}
+	schemaName := m.ResponseType.Type
 	sm, err := gp.discoveryAdapter.GetSchemaMap(serviceName, resourceName)
+	if err != nil {
+		return nil, nil, err
+	}
 	retVal, ok := sm[schemaName]
 	if !ok {
 		return nil, nil, fmt.Errorf("can't find schema '%s'", schemaName)
@@ -466,14 +517,14 @@ func (gp *GoogleProvider) Parameterise(httpContext httpexec.IHttpContext, parame
 	var queryParams []string
 	i := 0
 	for k, v := range parameters.PathParams {
-		if strings.Contains(httpContext.GetTemplateUrl(), "{" + k + "}") {
+		if strings.Contains(httpContext.GetTemplateUrl(), "{"+k+"}") {
 			args[i] = "{" + k + "}"
 			args[i+1] = fmt.Sprint(v)
 			i += 2
 			visited[k] = true
 			continue
 		}
-		if strings.Contains(httpContext.GetTemplateUrl(), "{+" + k + "}") {
+		if strings.Contains(httpContext.GetTemplateUrl(), "{+"+k+"}") {
 			args[i] = "{+" + k + "}"
 			args[i+1] = fmt.Sprint(v)
 			i += 2

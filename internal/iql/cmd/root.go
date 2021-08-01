@@ -20,6 +20,7 @@ import (
 	"infraql/internal/iql/config"
 	"infraql/internal/iql/constants"
 	"infraql/internal/iql/dto"
+	"infraql/internal/pkg/txncounter"
 	"os"
 	"path/filepath"
 
@@ -45,9 +46,11 @@ var (
 
 var SemVersion string = fmt.Sprintf("%s.%s.%s", BuildMajorVersion, BuildMinorVersion, BuildPatchVersion)
 
-var ( 
-	runtimeCtx dto.RuntimeCtx 
-	queryCache *lrucache.LRUCache
+var (
+	runtimeCtx      dto.RuntimeCtx
+	queryCache      *lrucache.LRUCache
+	txnCtrMgr       *txncounter.TxnCounterManager
+	replicateCtrMgr bool = false
 )
 
 // rootCmd represents the base command when called without any subcommands
@@ -86,29 +89,34 @@ func init() {
 	// will be global for your application.
 
 	rootCmd.PersistentFlags().IntVar(&runtimeCtx.APIRequestTimeout, dto.APIRequestTimeoutKey, 45, "API request timeout in seconds, 0 for no timeout.")
-	rootCmd.PersistentFlags().StringVar(&runtimeCtx.ColorScheme, dto.ColorSchemeKey, config.GetDefaultColorScheme(), fmt.Sprintf("color scheme, must be one of {'%s', '%s', '%s'}; defaulted to: %s", dto.DarkColorScheme, dto.LightColorScheme, dto.NullColorScheme, config.GetDefaultColorScheme()))
-	rootCmd.PersistentFlags().StringVar(&runtimeCtx.ConfigFilePath, dto.ConfigFilePathKey, config.GetDefaultConfigFilePath(), fmt.Sprintf("config file full path; defaulted into current dir as: %s", config.GetDefaultConfigFilePath()))
-	rootCmd.PersistentFlags().StringVar(&runtimeCtx.ProviderRootPath, dto.ProviderRootPathKey, config.GetDefaultProviderCacheRoot(), fmt.Sprintf("config and cache root path; default is %s", config.GetDefaultProviderCacheRoot()))
-	rootCmd.PersistentFlags().Uint32Var(&runtimeCtx.ProviderRootPathMode, dto.ProviderRootPathModeKey, config.GetDefaultProviderCacheDirFileMode(), fmt.Sprintf("config and cache root path; default is %d", config.GetDefaultProviderCacheDirFileMode()))
-	rootCmd.PersistentFlags().StringVar(&runtimeCtx.ViperCfgFileName, dto.ViperCfgFileNameKey, config.GetDefaultViperConfigFileName(), fmt.Sprintf("config filename; default is %s", config.GetDefaultViperConfigFileName()))
-	rootCmd.PersistentFlags().StringVar(&runtimeCtx.KeyFilePath, dto.KeyFilePathKey, config.GetDefaultKeyFilePath(), fmt.Sprintf("service account key filename; default is %s", config.GetDefaultKeyFilePath()))
-	rootCmd.PersistentFlags().StringVar(&runtimeCtx.ProviderStr, dto.ProviderStrKey, config.GetGoogleProviderString(), fmt.Sprintf(`infra provder; default is "%s"`, config.GetGoogleProviderString()))
+	rootCmd.PersistentFlags().StringVar(&runtimeCtx.ColorScheme, dto.ColorSchemeKey, config.GetDefaultColorScheme(), fmt.Sprintf("Color scheme, must be one of {'%s', '%s', '%s'}", dto.DarkColorScheme, dto.LightColorScheme, dto.NullColorScheme))
+	rootCmd.PersistentFlags().StringVar(&runtimeCtx.ConfigFilePath, dto.ConfigFilePathKey, config.GetDefaultConfigFilePath(), fmt.Sprintf("Config file full path; defaults to current dir"))
+	rootCmd.PersistentFlags().StringVar(&runtimeCtx.ProviderRootPath, dto.ProviderRootPathKey, config.GetDefaultProviderCacheRoot(), fmt.Sprintf("Config and cache root path"))
+	rootCmd.PersistentFlags().Uint32Var(&runtimeCtx.ProviderRootPathMode, dto.ProviderRootPathModeKey, config.GetDefaultProviderCacheDirFileMode(), fmt.Sprintf("Config and cache file mode"))
+	rootCmd.PersistentFlags().StringVar(&runtimeCtx.ViperCfgFileName, dto.ViperCfgFileNameKey, config.GetDefaultViperConfigFileName(), fmt.Sprintf("Config filename"))
+	rootCmd.PersistentFlags().StringVar(&runtimeCtx.KeyFilePath, dto.KeyFilePathKey, config.GetDefaultKeyFilePath(), fmt.Sprintf("Service account key filename"))
+	rootCmd.PersistentFlags().StringVar(&runtimeCtx.DbEngine, dto.DbEngineKey, config.GetDefaultDbEngine(), fmt.Sprintf("DB engine id"))
+	rootCmd.PersistentFlags().StringVar(&runtimeCtx.DbFilePath, dto.DbFilePathKey, config.GetDefaultDbFilePath(), fmt.Sprintf("DB persistence filename"))
+	rootCmd.PersistentFlags().IntVar(&runtimeCtx.DbGenerationId, dto.DbGenerationIdKey, txncounter.GetNextGenerationId(), fmt.Sprintf("DB generation id"))
+	rootCmd.PersistentFlags().StringVar(&runtimeCtx.DbInitFilePath, dto.DbInitFilePathKey, config.GetDefaultDbInitFilePath(), fmt.Sprintf("DB init file path"))
+	rootCmd.PersistentFlags().StringVar(&runtimeCtx.ProviderStr, dto.ProviderStrKey, config.GetGoogleProviderString(), fmt.Sprintf(`InfraQL provider`))
 	rootCmd.PersistentFlags().BoolVar(&runtimeCtx.WorkOffline, dto.WorkOfflineKey, false, "Work offline, using cached data")
-	rootCmd.PersistentFlags().BoolVarP(&runtimeCtx.VerboseFlag, dto.VerboseFlagKey, "v", false, "verbose flag")
+	rootCmd.PersistentFlags().BoolVarP(&runtimeCtx.VerboseFlag, dto.VerboseFlagKey, "v", false, "Verbose flag")
 	rootCmd.PersistentFlags().BoolVar(&runtimeCtx.DryRunFlag, dto.DryRunFlagKey, false, "dryrun flag; preprocessor only will run and output returned")
-	rootCmd.PersistentFlags().BoolVarP(&runtimeCtx.CSVHeadersDisable, dto.CSVHeadersDisableKey, "H", false, "CSV headers disable flag")
-	rootCmd.PersistentFlags().StringVarP(&runtimeCtx.OutputFormat, dto.OutputFormatKey, "o", "table", "output format, must be (json | table | csv), default table")
-	rootCmd.PersistentFlags().StringVarP(&runtimeCtx.OutfilePath, dto.OutfilePathKey, "f", "stdout", "outfile into which results are written, default stdout")
-	rootCmd.PersistentFlags().StringVarP(&runtimeCtx.InfilePath, dto.InfilePathKey, "i", "stdin", "input file from which queries are read, default stdin")
-	rootCmd.PersistentFlags().StringVarP(&runtimeCtx.TemplateCtxFilePath, dto.TemplateCtxFilePathKey, "q", "", "context file for templating")
-	rootCmd.PersistentFlags().IntVar(&runtimeCtx.QueryCacheSize, dto.QueryCacheSizeKey, constants.DefaultQueryCacheSize, "Size in number of entries of LRU cache for query plans.")
-	rootCmd.PersistentFlags().StringVarP(&runtimeCtx.Delimiter, dto.DelimiterKey, "d", ",", "Delimiter for csv output. Single char only.  Ignored for all non-csv output.")
-	rootCmd.PersistentFlags().IntVar(&runtimeCtx.CacheKeyCount, dto.CacheKeyCountKey, 100, "Cache initial key count.  Default 100.")
-	rootCmd.PersistentFlags().IntVar(&runtimeCtx.CacheTTL, dto.CacheTTLKey, 3600, "TTL for cached metadata documents, in seconds.  Default 3600 (1hr).")
-	rootCmd.PersistentFlags().BoolVar(&runtimeCtx.TestWithoutApiCalls, dto.TestWithoutApiCallsKey, false, "flag to omit api calls for testing, default false")
-	rootCmd.PersistentFlags().BoolVar(&runtimeCtx.UseNonPreferredAPIs, dto.UseNonPreferredAPIsKEy, false, "flag enable non-poreferred APIs, default false")
-	rootCmd.PersistentFlags().StringVar(&runtimeCtx.LogLevelStr, dto.LogLevelStrKey, config.GetDefaultLogLevelString(), fmt.Sprintf(`log level; default is "%s"`, config.GetDefaultLogLevelString()))
-	rootCmd.PersistentFlags().StringVar(&runtimeCtx.ErrorPresentation, dto.ErrorPresentationKey, config.GetDefaultErrorPresentationString(), fmt.Sprintf(`error presetation; options are: {"stderr", "record"} default is "%s"`, config.GetDefaultErrorPresentationString()))
+	rootCmd.PersistentFlags().BoolVar(&runtimeCtx.Reinit, dto.ReinitKey, false, "reinit; will delete db file at startup and force regeneration of all dependencies")
+	rootCmd.PersistentFlags().BoolVarP(&runtimeCtx.CSVHeadersDisable, dto.CSVHeadersDisableKey, "H", false, "Disable CSV headers flag")
+	rootCmd.PersistentFlags().StringVarP(&runtimeCtx.OutputFormat, dto.OutputFormatKey, "o", "table", "Output format, must be (json | table | csv)")
+	rootCmd.PersistentFlags().StringVarP(&runtimeCtx.OutfilePath, dto.OutfilePathKey, "f", "stdout", "Output file into which results are written")
+	rootCmd.PersistentFlags().StringVarP(&runtimeCtx.InfilePath, dto.InfilePathKey, "i", "stdin", "Input file from which queries are read")
+	rootCmd.PersistentFlags().StringVarP(&runtimeCtx.TemplateCtxFilePath, dto.TemplateCtxFilePathKey, "q", "", "Context file for templating")
+	rootCmd.PersistentFlags().IntVar(&runtimeCtx.QueryCacheSize, dto.QueryCacheSizeKey, constants.DefaultQueryCacheSize, "Size in number of entries of LRU cache for query plans")
+	rootCmd.PersistentFlags().StringVarP(&runtimeCtx.Delimiter, dto.DelimiterKey, "d", ",", "Delimiter for csv output;  single character only, ignored for all non-csv output")
+	rootCmd.PersistentFlags().IntVar(&runtimeCtx.CacheKeyCount, dto.CacheKeyCountKey, 100, "Cache initial key count")
+	rootCmd.PersistentFlags().IntVar(&runtimeCtx.CacheTTL, dto.CacheTTLKey, 3600, "TTL for cached metadata documents, in seconds")
+	rootCmd.PersistentFlags().BoolVar(&runtimeCtx.TestWithoutApiCalls, dto.TestWithoutApiCallsKey, false, "Flag to omit api calls for testing")
+	rootCmd.PersistentFlags().BoolVar(&runtimeCtx.UseNonPreferredAPIs, dto.UseNonPreferredAPIsKEy, false, "Flag to enable non-preferred APIs")
+	rootCmd.PersistentFlags().StringVar(&runtimeCtx.LogLevelStr, dto.LogLevelStrKey, config.GetDefaultLogLevelString(), fmt.Sprintf(`Log level`))
+	rootCmd.PersistentFlags().StringVar(&runtimeCtx.ErrorPresentation, dto.ErrorPresentationKey, config.GetDefaultErrorPresentationString(), fmt.Sprintf(`Error presentation, options are: {"stderr", "record"}`))
 
 	rootCmd.PersistentFlags().MarkHidden(dto.TestWithoutApiCallsKey)
 	rootCmd.PersistentFlags().MarkHidden(dto.ViperCfgFileNameKey)
@@ -120,9 +128,10 @@ func init() {
 
 	queryCache = lrucache.NewLRUCache(int64(runtimeCtx.QueryCacheSize))
 
+	rootCmd.CompletionOptions.DisableDefaultCmd = true
 	rootCmd.AddCommand(execCmd)
 	rootCmd.AddCommand(shellCmd)
-	rootCmd.AddCommand(srvCmd)
+	// rootCmd.AddCommand(srvCmd)
 
 }
 
@@ -155,6 +164,9 @@ func initConfig() {
 	config.CreateDirIfNotExists(runtimeCtx.ProviderRootPath, os.FileMode(runtimeCtx.ProviderRootPathMode))
 	config.CreateDirIfNotExists(filepath.Join(runtimeCtx.ProviderRootPath, runtimeCtx.ProviderStr), os.FileMode(runtimeCtx.ProviderRootPathMode))
 	config.CreateDirIfNotExists(config.GetReadlineDirPath(runtimeCtx), os.FileMode(runtimeCtx.ProviderRootPathMode))
+	if runtimeCtx.Reinit {
+		os.Remove(runtimeCtx.DbFilePath)
+	}
 	viper.SetConfigFile(filepath.Join(runtimeCtx.ProviderRootPath, runtimeCtx.ViperCfgFileName))
 	viper.AddConfigPath(runtimeCtx.ProviderRootPath)
 	log.Infof("ProviderRootPath = %s, ViperCfgFileName = %s", runtimeCtx.ProviderRootPath, runtimeCtx.ViperCfgFileName)

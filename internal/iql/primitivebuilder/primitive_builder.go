@@ -1,30 +1,20 @@
 package primitivebuilder
 
 import (
-	"fmt"
+	"infraql/internal/iql/drm"
 	"infraql/internal/iql/dto"
 	"infraql/internal/iql/iqlmodel"
 	"infraql/internal/iql/metadata"
+	"infraql/internal/iql/parserutil"
 	"infraql/internal/iql/plan"
 	"infraql/internal/iql/provider"
+	"infraql/internal/iql/symtab"
 	"infraql/internal/iql/taxonomy"
+
+	"infraql/internal/pkg/txncounter"
 
 	"vitess.io/vitess/go/vt/sqlparser"
 )
-
-type TblMap map[sqlparser.SQLNode]taxonomy.ExtendedTableMetadata
-
-func (tm TblMap) GetTable(node sqlparser.SQLNode) (taxonomy.ExtendedTableMetadata, error) {
-	tbl, ok := tm[node]
-	if !ok {
-		return taxonomy.ExtendedTableMetadata{}, fmt.Errorf("could not locate table metadata for AST node: %v", node)
-	}
-	return tbl, nil
-}
-
-func (tm TblMap) SetTable(node sqlparser.SQLNode, table taxonomy.ExtendedTableMetadata) {
-	tm[node] = table
-}
 
 type PrimitiveBuilder struct {
 	await bool
@@ -33,6 +23,8 @@ type PrimitiveBuilder struct {
 
 	builder Builder
 
+	drmConfig drm.DRMConfig
+
 	// needed globally for non-heirarchy queries, such as "SHOW SERVICES FROM google;"
 	prov            provider.IProvider
 	tableFilter     func(iqlmodel.ITable) (iqlmodel.ITable, error)
@@ -40,21 +32,48 @@ type PrimitiveBuilder struct {
 	likeAbleColumns []string
 
 	// per table
-	tables TblMap
+	tables taxonomy.TblMap
 
 	// per query
 	columnOrder       []string
 	commentDirectives sqlparser.CommentDirectives
+	txnCounterManager *txncounter.TxnCounterManager
 
 	// per query -- SELECT only
-	insertValOnlyRows map[int]map[int]interface{}
-	valOnlyCols       map[int]map[string]interface{}
+	insertValOnlyRows          map[int]map[int]interface{}
+	valOnlyCols                map[int]map[string]interface{}
+	insertPreparedStatementCtx *drm.PreparedStatementCtx
+	selectPreparedStatementCtx *drm.PreparedStatementCtx
 
 	// per query -- SHOW INSERT only
 	insertSchemaMap map[string]metadata.Schema
 
 	// TODO: universally retire in favour of builder, which returns plan.IPrimitive
 	primitive plan.IPrimitive
+
+	symTab symtab.HashMapTreeSymTab
+
+	where *sqlparser.Where
+}
+
+func (pb *PrimitiveBuilder) GetSymbol(k interface{}) (symtab.SymTabEntry, error) {
+	return pb.symTab.GetSymbol(k)
+}
+
+func (pb *PrimitiveBuilder) SetSymbol(k interface{}, v symtab.SymTabEntry) error {
+	return pb.symTab.SetSymbol(k, v)
+}
+
+func (pb *PrimitiveBuilder) GetWhere() *sqlparser.Where {
+	return pb.where
+}
+
+func (pb *PrimitiveBuilder) SetWhere(where *sqlparser.Where) {
+	pb.where = where
+}
+
+func (pb *PrimitiveBuilder) SetLeaf(k interface{}, l symtab.SymTab) error {
+	return pb.symTab.SetLeaf(k, l)
 }
 
 func (pb *PrimitiveBuilder) GetAst() sqlparser.Statement {
@@ -63,6 +82,17 @@ func (pb *PrimitiveBuilder) GetAst() sqlparser.Statement {
 
 func (pb *PrimitiveBuilder) GetInsertSchemaMap() map[string]metadata.Schema {
 	return pb.insertSchemaMap
+}
+
+func (pb *PrimitiveBuilder) GetTxnCounterManager() *txncounter.TxnCounterManager {
+	return pb.txnCounterManager
+}
+
+func (pb *PrimitiveBuilder) GetQuery() string {
+	if pb.builder != nil {
+		return pb.builder.GetQuery()
+	}
+	return ""
 }
 
 func (pb *PrimitiveBuilder) SetInsertSchemaMap(m map[string]metadata.Schema) {
@@ -81,8 +111,12 @@ func (pb *PrimitiveBuilder) GetColumnOrder() []string {
 	return pb.columnOrder
 }
 
-func (pb *PrimitiveBuilder) SetColumnOrder(co []string) {
-	pb.columnOrder = co
+func (pb *PrimitiveBuilder) SetColumnOrder(co []parserutil.ColumnHandle) {
+	var colOrd []string
+	for _, v := range co {
+		colOrd = append(colOrd, v.Name)
+	}
+	pb.columnOrder = colOrd
 }
 
 func (pb *PrimitiveBuilder) GetPrimitive() plan.IPrimitive {
@@ -137,6 +171,22 @@ func (pb *PrimitiveBuilder) SetTableFilter(tableFilter func(iqlmodel.ITable) (iq
 	pb.tableFilter = tableFilter
 }
 
+func (pb *PrimitiveBuilder) SetInsertPreparedStatementCtx(ctx *drm.PreparedStatementCtx) {
+	pb.insertPreparedStatementCtx = ctx
+}
+
+func (pb *PrimitiveBuilder) GetInsertPreparedStatementCtx() *drm.PreparedStatementCtx {
+	return pb.insertPreparedStatementCtx
+}
+
+func (pb *PrimitiveBuilder) SetSelectPreparedStatementCtx(ctx *drm.PreparedStatementCtx) {
+	pb.selectPreparedStatementCtx = ctx
+}
+
+func (pb *PrimitiveBuilder) GetSelectPreparedStatementCtx() *drm.PreparedStatementCtx {
+	return pb.selectPreparedStatementCtx
+}
+
 func (pb *PrimitiveBuilder) GetProvider() provider.IProvider {
 	return pb.prov
 }
@@ -169,22 +219,29 @@ func (pb PrimitiveBuilder) SetTable(node sqlparser.SQLNode, table taxonomy.Exten
 	pb.tables.SetTable(node, table)
 }
 
-func (pb PrimitiveBuilder) GetTables() TblMap {
+func (pb PrimitiveBuilder) GetTables() taxonomy.TblMap {
 	return pb.tables
 }
 
+func (pb PrimitiveBuilder) GetDRMConfig() drm.DRMConfig {
+	return pb.drmConfig
+}
+
 type HTTPRestPrimitive struct {
-	Provider provider.IProvider
-	Executor func(pc plan.IPrimitiveCtx) dto.ExecutorOutput
+	Provider   provider.IProvider
+	Executor   func(pc plan.IPrimitiveCtx) dto.ExecutorOutput
+	Preparator func() *drm.PreparedStatementCtx
 }
 
 type MetaDataPrimitive struct {
-	Provider provider.IProvider
-	Executor func(pc plan.IPrimitiveCtx) dto.ExecutorOutput
+	Provider   provider.IProvider
+	Executor   func(pc plan.IPrimitiveCtx) dto.ExecutorOutput
+	Preparator func() *drm.PreparedStatementCtx
 }
 
 type LocalPrimitive struct {
-	Executor func(pc plan.IPrimitiveCtx) dto.ExecutorOutput
+	Executor   func(pc plan.IPrimitiveCtx) dto.ExecutorOutput
+	Preparator func() *drm.PreparedStatementCtx
 }
 
 func (pr *HTTPRestPrimitive) Execute(pc plan.IPrimitiveCtx) dto.ExecutorOutput {
@@ -192,6 +249,27 @@ func (pr *HTTPRestPrimitive) Execute(pc plan.IPrimitiveCtx) dto.ExecutorOutput {
 		return pr.Executor(pc)
 	}
 	return dto.NewExecutorOutput(nil, nil, nil, nil)
+}
+
+func (pr *HTTPRestPrimitive) GetPreparedStatementContext() *drm.PreparedStatementCtx {
+	if pr.Preparator != nil {
+		return pr.Preparator()
+	}
+	return nil
+}
+
+func (pr *MetaDataPrimitive) GetPreparedStatementContext() *drm.PreparedStatementCtx {
+	if pr.Preparator != nil {
+		return pr.Preparator()
+	}
+	return nil
+}
+
+func (pr *LocalPrimitive) GetPreparedStatementContext() *drm.PreparedStatementCtx {
+	if pr.Preparator != nil {
+		return pr.Preparator()
+	}
+	return nil
 }
 
 func (pr *MetaDataPrimitive) Execute(pc plan.IPrimitiveCtx) dto.ExecutorOutput {
@@ -215,10 +293,11 @@ func NewMetaDataPrimitive(provider provider.IProvider, executor func(pc plan.IPr
 	}
 }
 
-func NewHTTPRestPrimitive(provider provider.IProvider, executor func(pc plan.IPrimitiveCtx) dto.ExecutorOutput) *HTTPRestPrimitive {
+func NewHTTPRestPrimitive(provider provider.IProvider, executor func(pc plan.IPrimitiveCtx) dto.ExecutorOutput, preparator func() *drm.PreparedStatementCtx) *HTTPRestPrimitive {
 	return &HTTPRestPrimitive{
-		Provider: provider,
-		Executor: executor,
+		Provider:   provider,
+		Executor:   executor,
+		Preparator: preparator,
 	}
 }
 
@@ -228,12 +307,15 @@ func NewLocalPrimitive(executor func(pc plan.IPrimitiveCtx) dto.ExecutorOutput) 
 	}
 }
 
-func NewPrimitiveBuilder(ast sqlparser.Statement) *PrimitiveBuilder {
+func NewPrimitiveBuilder(ast sqlparser.Statement, drmConfig drm.DRMConfig, txnCtrMgr *txncounter.TxnCounterManager) *PrimitiveBuilder {
 	return &PrimitiveBuilder{
 		ast:               ast,
+		drmConfig:         drmConfig,
 		tables:            make(map[sqlparser.SQLNode]taxonomy.ExtendedTableMetadata),
 		valOnlyCols:       make(map[int]map[string]interface{}),
 		insertValOnlyRows: make(map[int]map[int]interface{}),
 		colsVisited:       make(map[string]bool),
+		txnCounterManager: txnCtrMgr,
+		symTab:            symtab.NewHashMapTreeSymTab(),
 	}
 }

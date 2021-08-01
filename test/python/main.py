@@ -31,6 +31,7 @@ TEST_GENERATOR_ASSETS_ROOT :str = os.path.join(TEST_ROOT_DIR, 'assets')
 DEFAULT_RUN_DIR :str = os.path.abspath(os.path.join(REPOSITORY_ROOT_DIR, 'build'))
 DEFAULT_PROVIDER_DIR :str = os.path.abspath(os.path.join(TEST_ROOT_DIR, '.infraql'))
 DEFAULT_CONFIG_FILE :str = os.path.abspath(os.path.join(TEST_ROOT_DIR, '.iqlrc'))
+DEFAULT_DB_FILE :str = os.path.abspath(os.path.join(TEST_ROOT_DIR, 'db/tmp/python-tests-tmp-db.sqlite'))
 DEFAULT_EXECUTABLE :str = 'infraql'
 
 TEST_COUNT :int = 0
@@ -97,6 +98,12 @@ parser.add_argument(
     default=os.environ.get('INFRAQL_TEST_VERBOSE', False),
     help='enable verbose outputs for tests'
 )
+parser.add_argument(
+    '--dbfilepath',
+    type=str,
+    default=DEFAULT_DB_FILE,
+    help='db file to use as starting point'
+)
 
 args = parser.parse_args()
 executable_path = f'{args.rundir}/{args.executable}'
@@ -106,34 +113,37 @@ INVOCATION_BASE_ARGS = [
     f'--configfile={args.configfile}',
     '--offline',
     f'--providerroot={args.providerdir}',
-    f'--loglevel={args.loglevel}'
+    f'--loglevel={args.loglevel}',
+    f'--dbfilepath={args.dbfilepath}'
 ]
 
 INVOCATION_SIMPLE_ARGS = INVOCATION_BASE_ARGS + [ 'exec' ]
 
 COMPUTE_RSC_STR = "compute__v1"
 
-BASIC_USE_STMT = f"USE {COMPUTE_RSC_STR};"
+GOOGLE_PROV_STR = "google"
+
+BASIC_USE_STMT = f"USE {GOOGLE_PROV_STR};"
 
 SHOW_PROVIDERS_STMT = "SHOW PROVIDERS;"
 
-SHOW_SERVICES_STMT = "SHOW SERVICES FROM google;"
+SHOW_SERVICES_STMT = f"SHOW SERVICES FROM {GOOGLE_PROV_STR};"
 
-SHOW_RESOURCES_STMT = f"SHOW RESOURCES FROM {COMPUTE_RSC_STR};"
+SHOW_RESOURCES_STMT = f"SHOW RESOURCES FROM {GOOGLE_PROV_STR}.{COMPUTE_RSC_STR};"
 
-SHOW_ALT_RESOURCES_STMT = f"{BASIC_USE_STMT}; SHOW RESOURCES from google.compute;"
+SHOW_ALT_RESOURCES_STMT = f"{BASIC_USE_STMT}; SHOW RESOURCES from {GOOGLE_PROV_STR}.compute;"
 
 SHOW_EXTENDED_PROVIDERS_STMT = "SHOW EXTENDED PROVIDERS;"
 
-SHOW_EXTENDED_SERVICES_STMT = "SHOW EXTENDED SERVICES FROM google;"
+SHOW_EXTENDED_SERVICES_STMT = f"SHOW EXTENDED SERVICES FROM {GOOGLE_PROV_STR};"
 
-SHOW_EXTENDED_RESOURCES_STMT = f"SHOW EXTENDED RESOURCES FROM google.compute;"
+SHOW_EXTENDED_RESOURCES_STMT = f"SHOW EXTENDED RESOURCES FROM {GOOGLE_PROV_STR}.compute;"
 
-SHOW_ALT_EXTENDED_RESOURCES_STMT = f"{BASIC_USE_STMT}; SHOW EXTENDED RESOURCES FROM google.compute;"
+SHOW_ALT_EXTENDED_RESOURCES_STMT = f"{BASIC_USE_STMT}; SHOW EXTENDED RESOURCES FROM {GOOGLE_PROV_STR}.compute;"
 
-DESCRIBE_RESOURCE_STMT = f"DESCRIBE {COMPUTE_RSC_STR}.instances;"
+DESCRIBE_RESOURCE_STMT = f"DESCRIBE {GOOGLE_PROV_STR}.{COMPUTE_RSC_STR}.instances;"
 
-DESCRIBE_EXTENDED_RESOURCE_STMT = f"DESCRIBE EXTENDED {COMPUTE_RSC_STR}.instances;"
+DESCRIBE_EXTENDED_RESOURCE_STMT = f"DESCRIBE EXTENDED {GOOGLE_PROV_STR}.{COMPUTE_RSC_STR}.instances;"
 
 def print_prez_layer(message :StringOrBytes, file :TextIO=sys.stdout):
     print('', file=file)
@@ -204,6 +214,7 @@ def test_presentation(test_callable):
             else:
                 handle_test_failure(*args, **kwargs)
                 print_prez_layer('assertion #{} failed: "{}" unmatched in any output!!!'.format(j, expected[j]), file=sys.stderr)
+                print_prez_layer(f'failure output: {" ".join(output_for_test)}')
         else:
             TESTS_SUCCEEDED.append(kwargs.get('name', 'nameless test'))
             print_prez_layer('no assertion test succeeded', file=sys.stderr)

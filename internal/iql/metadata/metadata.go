@@ -14,11 +14,53 @@ import (
 	log "github.com/sirupsen/logrus"
 
 	"vitess.io/vitess/go/sqltypes"
+	"vitess.io/vitess/go/vt/sqlparser"
 )
 
 type Provider struct {
 	Name         string
 	DiscoveryDoc string
+}
+
+type ColumnDescriptor struct {
+	Alias        string
+	Name         string
+	Schema       *Schema
+	DecoratedCol string
+	Val          *sqlparser.SQLVal
+}
+
+func (cd ColumnDescriptor) GetIdentifier() string {
+	if cd.Alias != "" {
+		return cd.Alias
+	}
+	return cd.Name
+}
+
+func NewColumnDescriptor(alias string, name string, decoratedCol string, schema *Schema, val *sqlparser.SQLVal) ColumnDescriptor {
+	return ColumnDescriptor{Alias: alias, Name: name, DecoratedCol: decoratedCol, Schema: schema, Val: val}
+}
+
+type Tabulation struct {
+	columns   []ColumnDescriptor
+	name      string
+	arrayType string
+}
+
+func GetTabulation(name, arrayType string) Tabulation {
+	return Tabulation{name: name, arrayType: arrayType}
+}
+
+func (t *Tabulation) GetColumns() []ColumnDescriptor {
+	return t.columns
+}
+
+func (t *Tabulation) PushBackColumn(col ColumnDescriptor) {
+	t.columns = append(t.columns, col)
+}
+
+func (t *Tabulation) GetName() string {
+	return t.name
 }
 
 type Service struct {
@@ -332,6 +374,10 @@ func (s *Schema) IsIntegral() bool {
 	return s.Type == "int" || s.Type == "integer"
 }
 
+func (s *Schema) IsArrayRef() bool {
+	return s.Type == "array" || s.Items.NamedRef != ""
+}
+
 func (s *Schema) IsBoolean() bool {
 	return s.Type == "bool" || s.Type == "boolean"
 }
@@ -477,6 +523,27 @@ func (s *Schema) GetAllColumns() []string {
 		}
 	}
 	return retVal
+}
+
+func (s *Schema) Tabulate(omitColumns bool) *Tabulation {
+	if s.Type == "object" || (s.Properties != nil && len(s.Properties) > 0) {
+		var cols []ColumnDescriptor
+		if !omitColumns {
+			for k, val := range s.Properties {
+				valSchema, _ := val.GetSchema(s.SchemaCentral)
+				if valSchema != nil {
+					col := ColumnDescriptor{Name: k, Schema: valSchema}
+					cols = append(cols, col)
+				}
+			}
+		}
+		return &Tabulation{columns: cols, name: s.ID}
+	} else if s.Type == "array" {
+		if items, _ := s.Items.GetSchema(s.SchemaCentral); items != nil {
+			return items.Tabulate(false)
+		}
+	}
+	return nil
 }
 
 func (s *Schema) ToDescriptionMap(extended bool) map[string]interface{} {

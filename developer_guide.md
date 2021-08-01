@@ -99,6 +99,43 @@ To stop running live integration tests:
 
 **TODO**: instrument **REAL** integration tests as part of github actions workflow(s).
 
+## Cross Compilation locally
+
+`cmake` can cross-compile, provided dependencies are met.
+
+### From mac
+
+In order to support windows compilation:
+
+```
+brew install mingw-w64
+```
+
+In order to support linux compilation:
+
+```
+export HOMEBREW_BUILD_FROM_SOURCE=1
+brew install FiloSottile/musl-cross/musl-cross
+```
+
+## Testing latest build from CI system
+
+### On mac
+
+Download and unzip.  For the sake of example, let us consider the executable `~/Downloads/infraql`.
+
+First:
+```
+chmod +x ~/Downloads/infraql
+```
+
+Then, on OSX > 10, you will need to whitelist the executable for execution even though it was not signed by an identifie developer.  Least harmful way to do this is try and execute some command (below is one candidate), and then open `System Settings` > `Security & Privacy` and there should be some UI to allow execution of the untrusted `infraql` file.  At least this works on High Sierra `v1.2.1`.
+
+Then, run test commands, such as:
+```
+~/Downloads/infraql --keyfilepath=$HOME/moonlighting/infraql-original/keys/sa-key.json exec "select group_concat(substr(name, 0, 5)) || ' lalala' as cc from google.compute.disks where project = 'lab-kr-network-01' and zone = 'australia-southeast1-b';" -o text
+```
+
 ## Notes on vitess
 
 Vitess implements mysql client and sql driver interfaces.  The server backend listens over HTTP and RPC and implements methods for:

@@ -35,9 +35,9 @@ type primitiveGenerator struct {
 	PrimitiveBuilder *primitivebuilder.PrimitiveBuilder
 }
 
-func newPrimitiveGenerator(ast sqlparser.Statement) *primitiveGenerator {
+func newPrimitiveGenerator(ast sqlparser.Statement, handlerCtx *handler.HandlerContext) *primitiveGenerator {
 	return &primitiveGenerator{
-		PrimitiveBuilder: primitivebuilder.NewPrimitiveBuilder(ast),
+		PrimitiveBuilder: primitivebuilder.NewPrimitiveBuilder(ast, handlerCtx.DrmConfig, handlerCtx.TxnCounterMgr),
 	}
 }
 
@@ -353,6 +353,9 @@ func prepareErroneousResultSet(rowMap map[string]map[string]interface{}, columnO
 func (pb *primitiveGenerator) describeInstructionExecutor(prov provider.IProvider, serviceName string, resourceName string, handlerCtx *handler.HandlerContext, extended bool, full bool) dto.ExecutorOutput {
 	var schema *metadata.Schema
 	schema, columnOrder, err := prov.DescribeResource(serviceName, resourceName, handlerCtx.RuntimeContext, extended, full)
+	if err != nil {
+		return util.PrepareResultSet(dto.NewPrepareResultSetDTO(nil, nil, nil, nil, err, nil))
+	}
 	descriptionMap := schema.ToDescriptionMap(extended)
 	keys := make(map[string]map[string]interface{})
 	for k, v := range descriptionMap {
@@ -396,45 +399,48 @@ func (pb *primitiveGenerator) insertExecutor(handlerCtx *handler.HandlerContext,
 	if err != nil {
 		return nil, err
 	}
-	insertPrimitive := primitivebuilder.NewHTTPRestPrimitive(
-		prov,
-		func(pc plan.IPrimitiveCtx) dto.ExecutorOutput {
-			var err error
-			response, apiErr := httpmiddleware.HttpApiCall(*handlerCtx, prov, tbl.HttpArmoury.Context)
-			if apiErr != nil {
-				return util.PrepareResultSet(dto.NewPrepareResultSetDTO(nil, nil, nil, rowSort, apiErr, nil))
-			}
-			target, err := httpexec.ProcessHttpResponse(response)
-			if err != nil {
-				return util.PrepareResultSet(dto.NewPrepareResultSetDTO(
-					nil,
-					nil,
-					nil,
-					nil,
-					err,
-					nil,
-				))
-			}
-			log.Infoln(fmt.Sprintf("target = %v", target))
-			items, ok := target[prov.GetDefaultKeyForSelectItems()]
-			keys := make(map[string]map[string]interface{})
-			if ok {
-				iArr, ok := items.([]interface{})
-				if ok && len(iArr) > 0 {
-					for i := range iArr {
-						item, ok := iArr[i].(map[string]interface{})
-						if ok {
-							keys[strconv.Itoa(i)] = item
-						}
+	ex := func(pc plan.IPrimitiveCtx) dto.ExecutorOutput {
+		var err error
+		response, apiErr := httpmiddleware.HttpApiCall(*handlerCtx, prov, tbl.HttpArmoury.Context)
+		if apiErr != nil {
+			return util.PrepareResultSet(dto.NewPrepareResultSetDTO(nil, nil, nil, rowSort, apiErr, nil))
+		}
+		target, err := httpexec.ProcessHttpResponse(response)
+		if err != nil {
+			return util.PrepareResultSet(dto.NewPrepareResultSetDTO(
+				nil,
+				nil,
+				nil,
+				nil,
+				err,
+				nil,
+			))
+		}
+		log.Infoln(fmt.Sprintf("target = %v", target))
+		items, ok := target[prov.GetDefaultKeyForSelectItems()]
+		keys := make(map[string]map[string]interface{})
+		if ok {
+			iArr, ok := items.([]interface{})
+			if ok && len(iArr) > 0 {
+				for i := range iArr {
+					item, ok := iArr[i].(map[string]interface{})
+					if ok {
+						keys[strconv.Itoa(i)] = item
 					}
 				}
 			}
-			msgs := dto.BackendMessages{}
-			if err == nil {
-				msgs.WorkingMessages = generateSuccessMessagesFromHeirarchy(tbl)
-			}
-			return dto.NewExecutorOutput(nil, target, &msgs, err)
-		})
+		}
+		msgs := dto.BackendMessages{}
+		if err == nil {
+			msgs.WorkingMessages = generateSuccessMessagesFromHeirarchy(tbl)
+		}
+		return dto.NewExecutorOutput(nil, target, &msgs, err)
+	}
+	insertPrimitive := primitivebuilder.NewHTTPRestPrimitive(
+		prov,
+		ex,
+		nil,
+	)
 	if !pb.PrimitiveBuilder.IsAwait() {
 		return insertPrimitive, nil
 	}
@@ -478,45 +484,48 @@ func (pb *primitiveGenerator) deleteExecutor(handlerCtx *handler.HandlerContext,
 	if err != nil {
 		return nil, err
 	}
-	deletePrimitive := primitivebuilder.NewHTTPRestPrimitive(
-		prov,
-		func(pc plan.IPrimitiveCtx) dto.ExecutorOutput {
-			var err error
-			response, apiErr := httpmiddleware.HttpApiCall(*handlerCtx, prov, tbl.HttpArmoury.Context)
-			if apiErr != nil {
-				return util.PrepareResultSet(dto.NewPrepareResultSetDTO(nil, nil, nil, nil, apiErr, nil))
-			}
-			target, err := httpexec.ProcessHttpResponse(response)
-			if err != nil {
-				return util.PrepareResultSet(dto.NewPrepareResultSetDTO(
-					nil,
-					nil,
-					nil,
-					nil,
-					err,
-					nil,
-				))
-			}
-			log.Infoln(fmt.Sprintf("target = %v", target))
-			items, ok := target[prov.GetDefaultKeyForDeleteItems()]
-			keys := make(map[string]map[string]interface{})
-			if ok {
-				iArr, ok := items.([]interface{})
-				if ok && len(iArr) > 0 {
-					for i := range iArr {
-						item, ok := iArr[i].(map[string]interface{})
-						if ok {
-							keys[strconv.Itoa(i)] = item
-						}
+	ex := func(pc plan.IPrimitiveCtx) dto.ExecutorOutput {
+		var err error
+		response, apiErr := httpmiddleware.HttpApiCall(*handlerCtx, prov, tbl.HttpArmoury.Context)
+		if apiErr != nil {
+			return util.PrepareResultSet(dto.NewPrepareResultSetDTO(nil, nil, nil, nil, apiErr, nil))
+		}
+		target, err := httpexec.ProcessHttpResponse(response)
+		if err != nil {
+			return util.PrepareResultSet(dto.NewPrepareResultSetDTO(
+				nil,
+				nil,
+				nil,
+				nil,
+				err,
+				nil,
+			))
+		}
+		log.Infoln(fmt.Sprintf("target = %v", target))
+		items, ok := target[prov.GetDefaultKeyForDeleteItems()]
+		keys := make(map[string]map[string]interface{})
+		if ok {
+			iArr, ok := items.([]interface{})
+			if ok && len(iArr) > 0 {
+				for i := range iArr {
+					item, ok := iArr[i].(map[string]interface{})
+					if ok {
+						keys[strconv.Itoa(i)] = item
 					}
 				}
 			}
-			msgs := dto.BackendMessages{}
-			if err == nil {
-				msgs.WorkingMessages = generateSuccessMessagesFromHeirarchy(tbl)
-			}
-			return pb.generateResultIfNeededfunc(keys, target, &msgs, err)
-		})
+		}
+		msgs := dto.BackendMessages{}
+		if err == nil {
+			msgs.WorkingMessages = generateSuccessMessagesFromHeirarchy(tbl)
+		}
+		return pb.generateResultIfNeededfunc(keys, target, &msgs, err)
+	}
+	deletePrimitive := primitivebuilder.NewHTTPRestPrimitive(
+		prov,
+		ex,
+		nil,
+	)
 	if !pb.PrimitiveBuilder.IsAwait() {
 		return deletePrimitive, nil
 	}
@@ -532,7 +541,7 @@ func generateSuccessMessagesFromHeirarchy(meta taxonomy.ExtendedTableMetadata) [
 	if methodErr == nil && err == nil && m != nil && prov != nil && prov.GetProviderString() == "google" {
 		if m.Name == "get" || m.Name == "list" || m.Name == "aggregatedList" {
 			successMsgs = []string{
-				"The operation completed successfully, consider using a SELECT statement if you are performing an operation that returns data, see https://help.infraql.io/SELECT.html for more information",
+				"The operation completed successfully, consider using a SELECT statement if you are performing an operation that returns data, see https://docs.infraql.io/language-spec/select for more information",
 			}
 		}
 	}
@@ -556,52 +565,55 @@ func (pb *primitiveGenerator) execExecutor(handlerCtx *handler.HandlerContext, n
 	if err != nil {
 		return nil, err
 	}
-	execPrimitive := primitivebuilder.NewHTTPRestPrimitive(
-		prov,
-		func(pc plan.IPrimitiveCtx) dto.ExecutorOutput {
-			var err error
-			var columnOrder []string
-			response, apiErr := httpmiddleware.HttpApiCall(*handlerCtx, prov, tbl.HttpArmoury.Context)
-			if apiErr != nil {
-				return util.PrepareResultSet(dto.NewPrepareResultSetDTO(nil, nil, nil, nil, apiErr, nil))
-			}
-			target, err = httpexec.ProcessHttpResponse(response)
-			if err != nil {
-				return util.PrepareResultSet(dto.NewPrepareResultSetDTO(
-					nil,
-					nil,
-					nil,
-					nil,
-					err,
-					nil,
-				))
-			}
-			log.Infoln(fmt.Sprintf("target = %v", target))
-			items, ok := target[prov.GetDefaultKeyForSelectItems()]
-			keys := make(map[string]map[string]interface{})
-			if ok {
-				iArr, ok := items.([]interface{})
-				if ok && len(iArr) > 0 {
-					for i := range iArr {
-						item, ok := iArr[i].(map[string]interface{})
-						if ok {
-							keys[strconv.Itoa(i)] = item
-						}
+	ex := func(pc plan.IPrimitiveCtx) dto.ExecutorOutput {
+		var err error
+		var columnOrder []string
+		response, apiErr := httpmiddleware.HttpApiCall(*handlerCtx, prov, tbl.HttpArmoury.Context)
+		if apiErr != nil {
+			return util.PrepareResultSet(dto.NewPrepareResultSetDTO(nil, nil, nil, nil, apiErr, nil))
+		}
+		target, err = httpexec.ProcessHttpResponse(response)
+		if err != nil {
+			return util.PrepareResultSet(dto.NewPrepareResultSetDTO(
+				nil,
+				nil,
+				nil,
+				nil,
+				err,
+				nil,
+			))
+		}
+		log.Infoln(fmt.Sprintf("target = %v", target))
+		items, ok := target[prov.GetDefaultKeyForSelectItems()]
+		keys := make(map[string]map[string]interface{})
+		if ok {
+			iArr, ok := items.([]interface{})
+			if ok && len(iArr) > 0 {
+				for i := range iArr {
+					item, ok := iArr[i].(map[string]interface{})
+					if ok {
+						keys[strconv.Itoa(i)] = item
 					}
 				}
-			} else {
-				keys["0"] = target
 			}
-			// optional data return pattern to be included in grammar subsequently
-			// return util.PrepareResultSet(dto.NewPrepareResultSetDTO(nil, keys, columnOrder, nil, err, nil))
-			log.Debugln(fmt.Sprintf("keys = %v", keys))
-			log.Debugln(fmt.Sprintf("columnOrder = %v", columnOrder))
-			msgs := dto.BackendMessages{}
-			if err == nil {
-				msgs.WorkingMessages = generateSuccessMessagesFromHeirarchy(tbl)
-			}
-			return pb.generateResultIfNeededfunc(keys, target, &msgs, err)
-		})
+		} else {
+			keys["0"] = target
+		}
+		// optional data return pattern to be included in grammar subsequently
+		// return util.PrepareResultSet(dto.NewPrepareResultSetDTO(nil, keys, columnOrder, nil, err, nil))
+		log.Debugln(fmt.Sprintf("keys = %v", keys))
+		log.Debugln(fmt.Sprintf("columnOrder = %v", columnOrder))
+		msgs := dto.BackendMessages{}
+		if err == nil {
+			msgs.WorkingMessages = generateSuccessMessagesFromHeirarchy(tbl)
+		}
+		return pb.generateResultIfNeededfunc(keys, target, &msgs, err)
+	}
+	execPrimitive := primitivebuilder.NewHTTPRestPrimitive(
+		prov,
+		ex,
+		nil,
+	)
 	if !pb.PrimitiveBuilder.IsAwait() {
 		return execPrimitive, nil
 	}

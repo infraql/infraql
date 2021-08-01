@@ -20,7 +20,9 @@ import (
 	"infraql/internal/iql/color"
 	"infraql/internal/iql/config"
 	"infraql/internal/iql/dto"
+	"infraql/internal/iql/entryutil"
 	"infraql/internal/iql/handler"
+	"infraql/internal/iql/iqlerror"
 	"infraql/internal/iql/provider"
 	"infraql/internal/iql/writer"
 	"io"
@@ -42,13 +44,13 @@ Welcome to the interactive shell for running InfraQL commands.
 ---`
 
 	// Auth messages
-	interactiveSuccessMsgTmpl string = `Authenticated interactively to google as %s, to change the authenticated user, use AUTH REVOKE followed by AUTH LOGIN, see https://help.infraql.io/AUTH.html`
+	interactiveSuccessMsgTmpl string = `Authenticated interactively to google as %s, to change the authenticated user, use AUTH REVOKE followed by AUTH LOGIN, see https://docs.infraql.io/language-spec/auth`
 
-	notAuthenticatedMsg string = `Not authenticated, to authenticate to a provider use the AUTH LOGIN command, see https://help.infraql.io/AUTH.html`
+	notAuthenticatedMsg string = `Not authenticated, to authenticate to a provider use the AUTH LOGIN command, see https://docs.infraql.io/language-spec/auth`
 
-	saFileErrorMsgTmpl string = `Not authenticated, service account referenced in keyfilepath (%s) does not exist, authenticate interactively using AUTH LOGIN, for more information see https://help.infraql.io/AUTH.html`
+	saFileErrorMsgTmpl string = `Not authenticated, service account referenced in keyfilepath (%s) does not exist, authenticate interactively using AUTH LOGIN, for more information see https://docs.infraql.io/language-spec/auth`
 
-	saSuccessMsgTmpl string = `Authenticated using a service account set using the keyfilepath flag (%s), for more information see https://help.infraql.io/AUTH.html`
+	saSuccessMsgTmpl string = `Authenticated using a service account set using the keyfilepath flag (%s), for more information see https://docs.infraql.io/language-spec/auth`
 )
 
 func getShellIntroLong() string {
@@ -109,16 +111,19 @@ var shellCmd = &cobra.Command{
 		fmt.Fprintln(outfile, "") // necesary hack to get 'square' coloring
 		fmt.Fprintln(outfile, getShellIntroLong())
 
-		handlerCtx, _ := handler.GetHandlerCtx("", runtimeCtx, queryCache)
+		sqlEngine, err := entryutil.BuildSQLEngine(runtimeCtx)
+		iqlerror.PrintErrorAndExitOneIfError(err)
+
+		handlerCtx, _ := handler.GetHandlerCtx("", runtimeCtx, queryCache, sqlEngine)
 		provider, pErr := handlerCtx.GetProvider(handlerCtx.RuntimeContext.ProviderStr)
 		authCtx, authErr := handlerCtx.GetAuthContext(provider.GetProviderString())
 		if authErr != nil {
-			fmt.Fprintln(outErrFile, fmt.Sprintf("error setting up AUTH for provider '%s'", handlerCtx.RuntimeContext.ProviderStr))
+			fmt.Fprintln(outErrFile, fmt.Sprintf("Error setting up AUTH for provider '%s'", handlerCtx.RuntimeContext.ProviderStr))
 		}
 		if pErr == nil {
 			provider.ShowAuth(authCtx)
 		} else {
-			fmt.Fprintln(outErrFile, fmt.Sprintf("error setting up API for provider '%s'", handlerCtx.RuntimeContext.ProviderStr))
+			fmt.Fprintln(outErrFile, fmt.Sprintf("Error setting up API for provider '%s'", handlerCtx.RuntimeContext.ProviderStr))
 		}
 
 		var readlineCfg *readline.Config

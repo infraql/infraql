@@ -1,6 +1,7 @@
 package plan
 
 import (
+	"infraql/internal/iql/drm"
 	"infraql/internal/iql/dto"
 	"io"
 	"sync"
@@ -20,6 +21,8 @@ type IPrimitiveCtx interface {
 
 type IPrimitive interface {
 	Execute(IPrimitiveCtx) dto.ExecutorOutput
+
+	GetPreparedStatementContext() *drm.PreparedStatementCtx
 }
 
 type Plan struct {

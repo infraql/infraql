@@ -2,11 +2,18 @@ package handler
 
 import (
 	"fmt"
+	"infraql/internal/iql/drm"
 	"infraql/internal/iql/dto"
 	"infraql/internal/iql/provider"
+	"infraql/internal/iql/sqlengine"
+	"infraql/internal/pkg/txncounter"
 	"io"
 
 	lrucache "vitess.io/vitess/go/cache"
+)
+
+var (
+	drmConfig drm.DRMConfig = drm.GetGoogleV1SQLiteConfig()
 )
 
 type HandlerContext struct {
@@ -14,13 +21,15 @@ type HandlerContext struct {
 	Query             string
 	RuntimeContext    dto.RuntimeCtx
 	providers         map[string]provider.IProvider
-	CurrentProvider    string
+	CurrentProvider   string
 	authContexts      map[string]*dto.AuthCtx
 	ErrorPresentation string
 	Outfile           io.Writer
 	OutErrFile        io.Writer
 	LRUCache          *lrucache.LRUCache
-
+	SQLEngine         sqlengine.SQLEngine
+	DrmConfig         drm.DRMConfig
+	TxnCounterMgr     *txncounter.TxnCounterManager
 }
 
 func (hc *HandlerContext) GetProvider(providerName string) (provider.IProvider, error) {
@@ -47,12 +56,12 @@ func (hc *HandlerContext) GetAuthContext(providerName string) (*dto.AuthCtx, err
 	return authCtx, err
 }
 
-func GetHandlerCtx(cmdString string, runtimeCtx dto.RuntimeCtx, lruCache *lrucache.LRUCache) (*HandlerContext, error) {
-	prov, err := provider.GetProviderFromRuntimeCtx(runtimeCtx)
+func GetHandlerCtx(cmdString string, runtimeCtx dto.RuntimeCtx, lruCache *lrucache.LRUCache, sqlEng sqlengine.SQLEngine) (HandlerContext, error) {
+	prov, err := provider.GetProviderFromRuntimeCtx(runtimeCtx, sqlEng)
 	if err != nil {
-		return nil, err
+		return HandlerContext{}, err
 	}
-	return &HandlerContext{
+	return HandlerContext{
 		RawQuery:       cmdString,
 		RuntimeContext: runtimeCtx,
 		providers: map[string]provider.IProvider{
@@ -62,6 +71,9 @@ func GetHandlerCtx(cmdString string, runtimeCtx dto.RuntimeCtx, lruCache *lrucac
 			runtimeCtx.ProviderStr: dto.GetAuthCtx(nil, runtimeCtx.KeyFilePath),
 		},
 		ErrorPresentation: runtimeCtx.ErrorPresentation,
-		LRUCache: lruCache,
+		LRUCache:          lruCache,
+		SQLEngine:         sqlEng,
+		DrmConfig:         drmConfig,
+		TxnCounterMgr:     nil,
 	}, nil
 }
