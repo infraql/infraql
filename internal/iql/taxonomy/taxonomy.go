@@ -2,10 +2,10 @@ package taxonomy
 
 import (
 	"fmt"
+	"infraql/internal/iql/dto"
 	"infraql/internal/iql/handler"
 	"infraql/internal/iql/httpbuild"
 	"infraql/internal/iql/iqlmodel"
-	"infraql/internal/iql/iqlutil"
 	"infraql/internal/iql/metadata"
 	"infraql/internal/iql/parserutil"
 	"infraql/internal/iql/provider"
@@ -13,6 +13,20 @@ import (
 
 	"vitess.io/vitess/go/vt/sqlparser"
 )
+
+type TblMap map[sqlparser.SQLNode]ExtendedTableMetadata
+
+func (tm TblMap) GetTable(node sqlparser.SQLNode) (ExtendedTableMetadata, error) {
+	tbl, ok := tm[node]
+	if !ok {
+		return ExtendedTableMetadata{}, fmt.Errorf("could not locate table metadata for AST node: %v", node)
+	}
+	return tbl, nil
+}
+
+func (tm TblMap) SetTable(node sqlparser.SQLNode, table ExtendedTableMetadata) {
+	tm[node] = table
+}
 
 type ExtendedTableMetadata struct {
 	TableFilter         func(iqlmodel.ITable) (iqlmodel.ITable, error)
@@ -91,6 +105,10 @@ func (ex ExtendedTableMetadata) GetTableName() (string, error) {
 	return ex.HeirarchyObjects.HeirarchyIds.GetTableName(), nil
 }
 
+func (ex ExtendedTableMetadata) GetItemsObjectSchema() (*metadata.Schema, error) {
+	return ex.HeirarchyObjects.GetItemsObjectSchema()
+}
+
 func NewExtendedTableMetadata(heirarchyObjects *HeirarchyObjects) ExtendedTableMetadata {
 	return ExtendedTableMetadata{
 		ColsVisited:        make(map[string]bool),
@@ -99,95 +117,113 @@ func NewExtendedTableMetadata(heirarchyObjects *HeirarchyObjects) ExtendedTableM
 	}
 }
 
-type HeirarchyIdentifiers struct {
-	ProviderStr string
-	ServiceStr  string
-	ResourceStr string
-	MethodStr   string
-}
-
 type HeirarchyObjects struct {
-	HeirarchyIds HeirarchyIdentifiers
+	HeirarchyIds dto.HeirarchyIdentifiers
 	Provider     provider.IProvider
 	ServiceHdl   *metadata.ServiceHandle
 	Resource     *metadata.Resource
 	Method       *metadata.Method
 }
 
-func ResolveExecHeirarchyIdentifiers(node sqlparser.TableName) *HeirarchyIdentifiers {
-	return resolveMethodTerminalHeirarchyIdentifiers(node)
-}
-
-func (hi *HeirarchyIdentifiers) GetTableName() string {
-	if hi.ProviderStr != "" {
-		return fmt.Sprintf("%s.%s.%s", hi.ProviderStr, hi.ServiceStr, hi.ResourceStr)
-	}
-	return fmt.Sprintf("%s.%s", hi.ServiceStr, hi.ResourceStr)
-}
-
 func (ho *HeirarchyObjects) GetTableName() string {
 	return ho.HeirarchyIds.GetTableName()
 }
 
-func resolveMethodTerminalHeirarchyIdentifiers(node sqlparser.TableName) *HeirarchyIdentifiers {
-	var retVal HeirarchyIdentifiers
-	// all will default to empty string
-	retVal.ProviderStr = iqlutil.SanitisePossibleTickEscapedTerm(node.QualifierThird.String())
-	retVal.ServiceStr = iqlutil.SanitisePossibleTickEscapedTerm(node.QualifierSecond.String())
-	retVal.ResourceStr = iqlutil.SanitisePossibleTickEscapedTerm(node.Qualifier.String())
-	retVal.MethodStr = iqlutil.SanitisePossibleTickEscapedTerm(node.Name.String())
-	return &retVal
+func (ho *HeirarchyObjects) GetObjectSchema() (*metadata.Schema, error) {
+	return ho.getObjectSchema()
 }
 
-func resolveResourceTerminalHeirarchyIdentifiers(node sqlparser.TableName) *HeirarchyIdentifiers {
-	var retVal HeirarchyIdentifiers
-	// all will default to empty string
-	retVal.ProviderStr = iqlutil.SanitisePossibleTickEscapedTerm(node.QualifierSecond.String())
-	retVal.ServiceStr = iqlutil.SanitisePossibleTickEscapedTerm(node.Qualifier.String())
-	retVal.ResourceStr = iqlutil.SanitisePossibleTickEscapedTerm(node.Name.String())
-	return &retVal
+func (ho *HeirarchyObjects) getObjectSchema() (*metadata.Schema, error) {
+	return ho.Provider.GetObjectSchema(ho.HeirarchyIds.ServiceStr, ho.HeirarchyIds.ResourceStr, ho.Method.ResponseType.Type)
 }
 
-func ResolveHeirarchyIDsFromResourceTerminalTable(node sqlparser.TableName) HeirarchyIdentifiers {
-	return *resolveResourceTerminalHeirarchyIdentifiers(node)
+func (ho *HeirarchyObjects) GetItemsObjectSchema() (*metadata.Schema, error) {
+	responseObj, err := ho.getObjectSchema()
+	if err != nil {
+		return nil, err
+	}
+	itemS, _ := responseObj.GetSelectListItems(ho.Provider.GetDefaultKeyForSelectItems())
+	if itemS == nil {
+		return nil, fmt.Errorf("could not locate dml aggregate object for response type '%v'", responseObj.ID)
+	}
+	is := itemS.Items
+	itemObjS, _ := is.GetSchema(itemS.SchemaCentral)
+	if itemObjS == nil {
+		return nil, fmt.Errorf("could not locate dml object for response type '%v'", responseObj.ID)
+	}
+	return itemObjS, nil
 }
 
-func GetHeirarchyFromStatement(handlerCtx *handler.HandlerContext, node sqlparser.SQLNode) (*HeirarchyObjects, error) {
-	var hIds *HeirarchyIdentifiers
-	var methodAction string
+func GetHeirarchyIDs(handlerCtx *handler.HandlerContext, node sqlparser.SQLNode) (*dto.HeirarchyIdentifiers, error) {
+	return getHids(handlerCtx, node)
+}
+
+func getHids(handlerCtx *handler.HandlerContext, node sqlparser.SQLNode) (*dto.HeirarchyIdentifiers, error) {
+	var hIds *dto.HeirarchyIdentifiers
 	switch n := node.(type) {
 	case *sqlparser.Exec:
-		hIds = resolveMethodTerminalHeirarchyIdentifiers(n.MethodName)
+		hIds = dto.ResolveMethodTerminalHeirarchyIdentifiers(n.MethodName)
 	case *sqlparser.Select:
 		currentSvcRsc, err := sqlparser.TableFromStatement(handlerCtx.Query)
 		if err != nil {
 			return nil, err
 		}
-		hIds = resolveResourceTerminalHeirarchyIdentifiers(currentSvcRsc)
-		methodAction = "select"
+		hIds = dto.ResolveResourceTerminalHeirarchyIdentifiers(currentSvcRsc)
 	case sqlparser.TableName:
-		hIds = resolveResourceTerminalHeirarchyIdentifiers(n)
+		hIds = dto.ResolveResourceTerminalHeirarchyIdentifiers(n)
 	case *sqlparser.AliasedTableExpr:
-		return GetHeirarchyFromStatement(handlerCtx, n.Expr)
+		return getHids(handlerCtx, n.Expr)
+	case *sqlparser.DescribeTable:
+		return getHids(handlerCtx, n.Table)
 	case *sqlparser.Show:
 		switch strings.ToUpper(n.Type) {
 		case "INSERT":
-			hIds = resolveResourceTerminalHeirarchyIdentifiers(n.OnTable)
-			methodAction = "insert"
+			hIds = dto.ResolveResourceTerminalHeirarchyIdentifiers(n.OnTable)
 		case "METHODS":
-			hIds = resolveResourceTerminalHeirarchyIdentifiers(n.OnTable)
+			hIds = dto.ResolveResourceTerminalHeirarchyIdentifiers(n.OnTable)
 		default:
 			return nil, fmt.Errorf("cannot resolve taxonomy for SHOW statement of type = '%s'", strings.ToUpper(n.Type))
 		}
 	case *sqlparser.Insert:
-		hIds = resolveResourceTerminalHeirarchyIdentifiers(n.Table)
-		methodAction = "insert"
+		hIds = dto.ResolveResourceTerminalHeirarchyIdentifiers(n.Table)
 	case *sqlparser.Delete:
 		currentSvcRsc, err := parserutil.ExtractSingleTableFromTableExprs(n.TableExprs)
 		if err != nil {
 			return nil, err
 		}
-		hIds = resolveResourceTerminalHeirarchyIdentifiers(*currentSvcRsc)
+		hIds = dto.ResolveResourceTerminalHeirarchyIdentifiers(*currentSvcRsc)
+	default:
+		return nil, fmt.Errorf("cannot resolve taxonomy")
+	}
+	return hIds, nil
+}
+
+func GetHeirarchyFromStatement(handlerCtx *handler.HandlerContext, node sqlparser.SQLNode) (*HeirarchyObjects, error) {
+	var hIds *dto.HeirarchyIdentifiers
+	hIds, err := getHids(handlerCtx, node)
+	methodRequired := true
+	var methodAction string
+	switch n := node.(type) {
+	case *sqlparser.Exec:
+	case *sqlparser.Select:
+		methodAction = "select"
+	case *sqlparser.DescribeTable:
+
+	case sqlparser.TableName:
+	case *sqlparser.AliasedTableExpr:
+		return GetHeirarchyFromStatement(handlerCtx, n.Expr)
+	case *sqlparser.Show:
+		switch strings.ToUpper(n.Type) {
+		case "INSERT":
+			methodAction = "insert"
+		case "METHODS":
+			methodRequired = false
+		default:
+			return nil, fmt.Errorf("cannot resolve taxonomy for SHOW statement of type = '%s'", strings.ToUpper(n.Type))
+		}
+	case *sqlparser.Insert:
+		methodAction = "insert"
+	case *sqlparser.Delete:
 		methodAction = "delete"
 	default:
 		return nil, fmt.Errorf("cannot resolve taxonomy")
@@ -211,7 +247,17 @@ func GetHeirarchyFromStatement(handlerCtx *handler.HandlerContext, node sqlparse
 	}
 	retVal.Resource = rsc
 	method, methodPresent := rsc.Methods[hIds.MethodStr]
-	if !methodPresent {
+	if !methodPresent && methodRequired {
+		switch node.(type) {
+		case *sqlparser.DescribeTable:
+			m, mStr, err := prov.InferDescribeMethod(rsc)
+			if err != nil {
+				return nil, err
+			}
+			retVal.Method = m
+			retVal.HeirarchyIds.MethodStr = mStr
+			return &retVal, nil
+		}
 		if methodAction == "" {
 			methodAction = "select"
 		}
@@ -222,6 +268,8 @@ func GetHeirarchyFromStatement(handlerCtx *handler.HandlerContext, node sqlparse
 		method = *meth
 		retVal.HeirarchyIds.MethodStr = methStr
 	}
-	retVal.Method = &method
+	if methodRequired {
+		retVal.Method = &method
+	}
 	return &retVal, nil
 }

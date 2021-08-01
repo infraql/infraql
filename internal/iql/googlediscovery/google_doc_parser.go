@@ -3,9 +3,13 @@ package googlediscovery
 import (
 	"encoding/json"
 	"errors"
-	"infraql/internal/iql/metadata"
-	"strings"
 	"fmt"
+	"infraql/internal/iql/drm"
+	"infraql/internal/iql/dto"
+	"infraql/internal/iql/metadata"
+	"infraql/internal/iql/sqlengine"
+	"infraql/internal/iql/util"
+	"strings"
 
 	log "github.com/sirupsen/logrus"
 )
@@ -16,6 +20,10 @@ const (
 	infraqlServiceKeyDelimiter string = "__"
 )
 
+var (
+	drmConfig drm.DRMConfig = drm.GetGoogleV1SQLiteConfig()
+)
+
 func TranslateServiceKeyGoogleToIql(serviceKey string) string {
 	return strings.Replace(serviceKey, googleServiceKeyDelimiter, infraqlServiceKeyDelimiter, -1)
 }
@@ -24,9 +32,22 @@ func TranslateServiceKeyIqlToGoogle(serviceKey string) string {
 	return strings.Replace(serviceKey, infraqlServiceKeyDelimiter, googleServiceKeyDelimiter, -1)
 }
 
-func GoogleServiceDiscoveryDocParser(bytes []byte) (map[string]interface{}, error) {
+func GoogleServiceDiscoveryDocParser(bytes []byte, dbEngine sqlengine.SQLEngine, prefix string) (map[string]interface{}, error) {
+	fields := strings.Split(prefix, ".")
+	if len(fields) != 2 {
+		return nil, fmt.Errorf("improper resource prefix '%s'", prefix)
+	}
+	provStr := fields[0]
+	svcStr := fields[1]
 	var result map[string]interface{}
 	jsonErr := json.Unmarshal(bytes, &result)
+	discoveryGenerationId, err := dbEngine.GetCurrentDiscoveryGenerationId(prefix)
+	if err != nil {
+		discoveryGenerationId, err = dbEngine.GetNextDiscoveryGenerationId(prefix)
+		if err != nil {
+			return nil, err
+		}
+	}
 	serviceName := result["id"].(string)
 	serviceId := TranslateServiceKeyGoogleToIql(serviceName)
 	baseUrl := result["baseUrl"].(string)
@@ -77,13 +98,64 @@ func GoogleServiceDiscoveryDocParser(bytes []byte) (map[string]interface{}, erro
 			if parseErr != nil {
 				return nil, parseErr
 			}
+			so.ID = k
 			schemas[k] = *so
 		}
 	}
+	var tabluationsAnnotated []util.AnnotatedTabulation
+	for _, v := range schemas {
+		if v.IsArrayRef() {
+			continue
+		}
+		// tableName := fmt.Sprintf("%s.%s", prefix, k)
+		switch v.Type {
+		case "object":
+			tabulation := v.Tabulate(false)
+			annTab := util.NewAnnotatedTabulation(tabulation, dto.NewHeirarchyIdentifiers(provStr, svcStr, tabulation.GetName(), ""))
+			tabluationsAnnotated = append(tabluationsAnnotated, annTab)
+			// create table
+		case "array":
+			itemsSchema, _ := v.GetItemsSchema()
+			if len(itemsSchema.Properties) > 0 {
+				// create "inline" table
+				tabulation := v.Tabulate(false)
+				annTab := util.NewAnnotatedTabulation(tabulation, dto.NewHeirarchyIdentifiers(provStr, svcStr, tabulation.GetName(), ""))
+				tabluationsAnnotated = append(tabluationsAnnotated, annTab)
+			}
+		}
+	}
+	db, err := dbEngine.GetDB()
+	if err != nil {
+		return nil, err
+	}
+	txn, err := db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	for _, tblt := range tabluationsAnnotated {
+		// log.Infoln(fmt.Sprintf("tabulation %d = %s", i, tblt.GetName()))
+		ddl := drmConfig.GenerateDDL(tblt, discoveryGenerationId)
+		for _, q := range ddl {
+			// log.Infoln(q)
+			_, err = db.Exec(q)
+			if err != nil {
+				errStr := fmt.Sprintf("aborting DDL run on query = %s, err = %v", q, err)
+				log.Infoln(errStr)
+				txn.Rollback()
+				return nil, err
+			}
+		}
+	}
+	err = txn.Commit()
+	if err != nil {
+		return nil, err
+	}
 	return map[string]interface{}{
-		"resources":      keys,
-		"schemas":        result["schemas"],
-		"schemas_parsed": schemas,
+		"resources":                keys,
+		"schemas":                  result["schemas"],
+		"schemas_parsed":           schemas,
+		"tablespace":               prefix,
+		"tablespace_generation_id": discoveryGenerationId,
 	}, jsonErr
 }
 
@@ -130,6 +202,7 @@ func parseSchema(schemaDeepMap map[string]interface{}, sReg *metadata.SchemaRegi
 	}
 	if propertiesOk {
 		prMap := make(map[string]metadata.SchemaHandle)
+		//
 		for k, property := range properties {
 			prop := property.(map[string]interface{})
 			ref, isRef := prop["$ref"]
@@ -137,6 +210,7 @@ func parseSchema(schemaDeepMap map[string]interface{}, sReg *metadata.SchemaRegi
 				prMap[k] = metadata.SchemaHandle{
 					NamedRef: ref.(string),
 				}
+				// colDes := metadata.ColumnDescriptor{Name: k, Schema: }
 			} else {
 				sObj, err := parseSchema(prop, sReg)
 				if err == nil {
@@ -155,7 +229,7 @@ func parseSchema(schemaDeepMap map[string]interface{}, sReg *metadata.SchemaRegi
 	return &so, err
 }
 
-func GoogleRootDiscoveryDocParser(bytes []byte) (map[string]interface{}, error) {
+func GoogleRootDiscoveryDocParser(bytes []byte, dbEngine sqlengine.SQLEngine, prefix string) (map[string]interface{}, error) {
 	var result struct {
 		Items []metadata.Service `json:"items"`
 	}
@@ -175,14 +249,14 @@ func GoogleRootDiscoveryDocParser(bytes []byte) (map[string]interface{}, error) 
 func extractResourceDescriptionGoogle(docMap map[string]interface{}, name string, serviceId string, method metadata.Method, prefix string) map[string]interface{} {
 	schemaName := method.GetResponseType()
 	if schemaName == "" {
-		schemaName = method.GetRequestType() 
+		schemaName = method.GetRequestType()
 		if schemaName == "" {
 			return map[string]interface{}{
 				"name":        name,
 				"id":          serviceId + "." + name,
 				"title":       name,
 				"description": "",
-			} 
+			}
 		}
 	}
 	os := getSchema(docMap, serviceId, schemaName, prefix)
@@ -313,33 +387,36 @@ func isOutputOnly(obj map[string]interface{}) bool {
 
 func getSchema(svcDiscDocMap map[string]interface{}, serviceName string, schemaName string, prefix string) map[string]interface{} {
 	retVal := svcDiscDocMap["schemas"].(map[string]interface{})[schemaName].(map[string]interface{})
-	var schemaPropertiesMap map[string]interface{} = retVal["properties"].(map[string]interface{})
+	sp := retVal["properties"]
 	retVal["title"] = schemaName
 	retVal["__output_only__"] = isOutputOnly(retVal)
-	for k, v := range schemaPropertiesMap {
-		val := v.(map[string]interface{})
-		if _, ok := val["$ref"]; ok {
-			s := val
-			s["__output_only__"] = isOutputOnly(s)
-			schemaPropertiesMap[k] = s
-		} else if val["type"] == "array" {
-			s := getArraySchema(svcDiscDocMap, val, k, serviceName, prefixMerge(prefix, k, SchemaDelimiter))
-			s["__output_only__"] = isOutputOnly(s)
-			s["__id__"] = k
-			schemaPropertiesMap[k] = s
-		} else if val["type"] == "object" {
-			val["__id__"] = k
-			val["__output_only__"] = isOutputOnly(val)
-			schemaPropertiesMap[k] = getObjectSchema(svcDiscDocMap, val, serviceName, prefixMerge(prefix, k, SchemaDelimiter))
-		} else {
-			p := prefixMerge(prefix, k, SchemaDelimiter)
-			val["path"] = p
-			val["__id__"] = k
-			val["__output_only__"] = isOutputOnly(val)
-			schemaPropertiesMap[k] = val
+	switch schemaPropertiesMap := sp.(type) {
+	case map[string]interface{}:
+		for k, v := range schemaPropertiesMap {
+			val := v.(map[string]interface{})
+			if _, ok := val["$ref"]; ok {
+				s := val
+				s["__output_only__"] = isOutputOnly(s)
+				schemaPropertiesMap[k] = s
+			} else if val["type"] == "array" {
+				s := getArraySchema(svcDiscDocMap, val, k, serviceName, prefixMerge(prefix, k, SchemaDelimiter))
+				s["__output_only__"] = isOutputOnly(s)
+				s["__id__"] = k
+				schemaPropertiesMap[k] = s
+			} else if val["type"] == "object" {
+				val["__id__"] = k
+				val["__output_only__"] = isOutputOnly(val)
+				schemaPropertiesMap[k] = getObjectSchema(svcDiscDocMap, val, serviceName, prefixMerge(prefix, k, SchemaDelimiter))
+			} else {
+				p := prefixMerge(prefix, k, SchemaDelimiter)
+				val["path"] = p
+				val["__id__"] = k
+				val["__output_only__"] = isOutputOnly(val)
+				schemaPropertiesMap[k] = val
+			}
 		}
+		retVal["properties"] = schemaPropertiesMap
 	}
-	retVal["properties"] = schemaPropertiesMap
 	return retVal
 }
 
@@ -457,7 +534,7 @@ func extractDescriptionFromMethodGoogle(methodVal interface{}) (metadata.Method,
 		return retVal, nil
 	}
 	return retVal, errors.New(errStr)
-	
+
 }
 
 func findGoogleResourcesMaps(prefix string, resourceMap map[string]interface{}) (map[string]interface{}, error) {

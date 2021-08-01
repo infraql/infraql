@@ -32,29 +32,39 @@ import (
 // execCmd represents the exec command
 var execCmd = &cobra.Command{
 	Use:   "exec",
-	Short: "A brief description of your command",
-	Long: `A longer description that spans multiple lines and likely contains examples
-and usage of using your command. For example:
+	Short: "Run one or more InfraQL commands or queries",
+	Long: `Run one or more InfraQL commands or queries from the command line or from an
+input file. For example:
 
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
+infraql exec \
+"select id, name from compute.instances where project = 'infraql-demo' and zone = 'australia-southeast1-a'" \
+--keyfilepath /mnt/c/tmp/infraql-demo.json --output csv
+
+infraql exec -i iqlscripts/listinstances.iql --keyfilepath /mnt/c/tmp/infraql-demo.json --output json
+
+infraql exec -i iqlscripts/create-disk.iql --keyfilepath /mnt/c/tmp/infraql-demo.json
+`,
 	Run: func(cmd *cobra.Command, args []string) {
 
 		var err error
 		var rdr io.Reader
-		var handlerCtx *handler.HandlerContext
 
 		switch runtimeCtx.InfilePath {
 		case "stdin":
+			if len(args) == 0 || args[0] == "" {
+				cmd.Help()
+				os.Exit(0)
+			}
 			rdr = bytes.NewReader([]byte(args[0]))
 		default:
 			rdr, err = os.Open(runtimeCtx.InfilePath)
 			iqlerror.PrintErrorAndExitOneIfError(err)
 		}
-		handlerCtx, err = entryutil.BuildHandlerContext(runtimeCtx, rdr, queryCache)
+		sqlEngine, err := entryutil.BuildSQLEngine(runtimeCtx)
 		iqlerror.PrintErrorAndExitOneIfError(err)
-		iqlerror.PrintErrorAndExitOneIfNil(handlerCtx, "handler context error")
+		handlerCtx, err := entryutil.BuildHandlerContext(runtimeCtx, rdr, queryCache, sqlEngine)
+		iqlerror.PrintErrorAndExitOneIfError(err)
+		iqlerror.PrintErrorAndExitOneIfNil(&handlerCtx, "Handler context error")
 		RunCommand(handlerCtx, nil, nil)
 	},
 }
@@ -70,7 +80,7 @@ func getOutputFile(filename string) (*os.File, error) {
 	}
 }
 
-func RunCommand(handlerCtx *handler.HandlerContext, outfile io.Writer, outErrFile io.Writer) {
+func RunCommand(handlerCtx handler.HandlerContext, outfile io.Writer, outErrFile io.Writer) {
 	if outfile == nil {
 		outfile, _ = getOutputFile(handlerCtx.RuntimeContext.OutfilePath)
 	}

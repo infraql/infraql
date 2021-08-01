@@ -23,6 +23,12 @@ set(BUILDCOMMITSHA local-dev)
 set(BUILDSHORTCOMMITSHA local-dev)
 set(BUILDDATE 1900-01-01)
 
+set(WINCOMPILER "CC=x86_64-w64-mingw32-gcc")
+set(LINUXCOMPILER "CC=x86_64-linux-musl-gcc")
+
+set(INT_TEST_DB_SRC_FILE "test/db/db.sqlite")
+set(INT_TEST_DB_DEST_FILE "test/db/tmp/python-tests-tmp-db.sqlite")
+
 enable_testing()
 
 set(TEST_SCRIPT ${CMAKE_CURRENT_SOURCE_DIR}/test/python/main.py)
@@ -33,7 +39,7 @@ add_custom_command(TARGET ${TARGET}
   PRE_BUILD
   DEPENDS ${SRCS}
   WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-  COMMAND go test ./...
+  COMMAND go test --tags "json1" ./...
   COMMENT "Running Go Unit Tests"
 )
 
@@ -41,7 +47,15 @@ add_custom_command(TARGET ${TARGET}
   PRE_BUILD
   DEPENDS ${SRCS}
   WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-  COMMAND go build -ldflags
+  COMMAND ${CMAKE_COMMAND} -E copy ${INT_TEST_DB_SRC_FILE} ${INT_TEST_DB_DEST_FILE}
+  COMMENT "Preparing for integration tests; copy db starting point file"
+)
+
+add_custom_command(TARGET ${TARGET}
+  PRE_BUILD
+  DEPENDS ${SRCS}
+  WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+  COMMAND go build  --tags "json1" -ldflags
   "-X infraql/internal/iql/cmd.BuildMajorVersion=${BUILDMAJORVERSION} \
   -X infraql/internal/iql/cmd.BuildMinorVersion=${BUILDMINORVERSION} \
   -X infraql/internal/iql/cmd.BuildPatchVersion=${BUILDPATCHVERSION} \
@@ -58,7 +72,7 @@ add_custom_command(TARGET ${TARGET}
   PRE_BUILD
   DEPENDS ${SRCS}
   WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-  COMMAND ${CMAKE_COMMAND} -E env GOOS=${OS_STR_MAC} go build -ldflags
+  COMMAND ${CMAKE_COMMAND} -E env GOOS=${OS_STR_MAC} go build --tags "json1" -ldflags
   "-X infraql/internal/iql/cmd.BuildMajorVersion=${BUILDMAJORVERSION} \
   -X infraql/internal/iql/cmd.BuildMinorVersion=${BUILDMINORVERSION} \
   -X infraql/internal/iql/cmd.BuildPatchVersion=${BUILDPATCHVERSION} \
@@ -75,7 +89,7 @@ add_custom_command(TARGET ${TARGET}
   PRE_BUILD
   DEPENDS ${SRCS}
   WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-  COMMAND ${CMAKE_COMMAND} -E env GOOS=${OS_STR_WINDOWS} go build -ldflags
+  COMMAND ${CMAKE_COMMAND} -E env GOOS=${OS_STR_WINDOWS} ${WINCOMPILER} go build --tags "json1" -ldflags
   "-X infraql/internal/iql/cmd.BuildMajorVersion=${BUILDMAJORVERSION} \
   -X infraql/internal/iql/cmd.BuildMinorVersion=${BUILDMINORVERSION} \
   -X infraql/internal/iql/cmd.BuildPatchVersion=${BUILDPATCHVERSION} \
@@ -92,7 +106,7 @@ add_custom_command(TARGET ${TARGET}
   PRE_BUILD
   DEPENDS ${SRCS}
   WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-  COMMAND ${CMAKE_COMMAND} -E env GOOS=${OS_STR_LINUX} go build -ldflags
+  COMMAND ${CMAKE_COMMAND} -E env GOOS=${OS_STR_LINUX} ${LINUXCOMPILER} go build -ldflags
   "-X infraql/internal/iql/cmd.BuildMajorVersion=${BUILDMAJORVERSION} \
   -X infraql/internal/iql/cmd.BuildMinorVersion=${BUILDMINORVERSION} \
   -X infraql/internal/iql/cmd.BuildPatchVersion=${BUILDPATCHVERSION} \

@@ -2,6 +2,7 @@ package asyncmonitor
 
 import (
 	"fmt"
+	"infraql/internal/iql/drm"
 	"infraql/internal/iql/dto"
 	"infraql/internal/iql/httpexec"
 	"infraql/internal/iql/plan"
@@ -51,6 +52,10 @@ func (asm *AsyncHttpMonitorPrimitive) Execute(pc plan.IPrimitiveCtx) dto.Executo
 		return asm.Executor(asyP)
 	}
 	return dto.NewExecutorOutput(nil, nil, nil, nil)
+}
+
+func (pr *AsyncHttpMonitorPrimitive) GetPreparedStatementContext() *drm.PreparedStatementCtx {
+	return nil
 }
 
 func NewAsyncMonitor(prov provider.IProvider) (IAsyncMonitor, error) {

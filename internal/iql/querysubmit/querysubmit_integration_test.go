@@ -5,6 +5,7 @@ import (
 	"os"
 	"testing"
 
+	"infraql/internal/iql/entryutil"
 	. "infraql/internal/iql/querysubmit"
 
 	"infraql/internal/iql/config"
@@ -12,8 +13,8 @@ import (
 	"infraql/internal/iql/provider"
 
 	"infraql/internal/test/infraqltestutil"
-	"infraql/internal/test/testobjects"
 	"infraql/internal/test/testhttpapi"
+	"infraql/internal/test/testobjects"
 
 	lrucache "vitess.io/vitess/go/cache"
 )
@@ -29,22 +30,31 @@ func TestSimpleSelectGoogleComputeInstanceQuerySubmit(t *testing.T) {
 	}
 	ex := testhttpapi.NewHTTPRequestExpectations(nil, nil, "GET", url, testobjects.GoogleComputeHost, testobjects.SimpleSelectGoogleComputeInstanceResponse, nil)
 	exp := testhttpapi.NewExpectationStore()
-	exp.Put(testobjects.GoogleComputeHost + path, *ex)
-	
+	exp.Put(testobjects.GoogleComputeHost+path, *ex)
+
 	testhttpapi.StartServer(t, exp)
 	provider.DummyAuth = true
 
-	handlerCtx, err := handler.GetHandlerCtx(testobjects.SimpleSelectGoogleComputeInstance, *runtimeCtx, lrucache.NewLRUCache(int64(runtimeCtx.QueryCacheSize)))
+	sqlEng, err := infraqltestutil.BuildSQLEngine(*runtimeCtx)
+
+	handlerCtx, err := handler.GetHandlerCtx(testobjects.SimpleSelectGoogleComputeInstance, *runtimeCtx, lrucache.NewLRUCache(int64(runtimeCtx.QueryCacheSize)), sqlEng)
 	handlerCtx.Outfile = os.Stdout
 	handlerCtx.OutErrFile = os.Stderr
-
 
 	if err != nil {
 		t.Fatalf("Test failed: %v", err)
 	}
 
+	tc, err := entryutil.GetTxnCounterManager(handlerCtx)
+
+	if err != nil {
+		t.Fatalf("Test failed: %v", err)
+	}
+
+	handlerCtx.TxnCounterMgr = tc
+
 	handlerCtx.Query = testobjects.SimpleSelectGoogleComputeInstance
-	response := SubmitQuery(handlerCtx)
+	response := SubmitQuery(&handlerCtx)
 
 	if len(response.Result.Rows) != 2 {
 		t.Fatalf("response size not as expected, actual != expected: %d != %d", len(response.Result.Rows), 2)
@@ -52,4 +62,3 @@ func TestSimpleSelectGoogleComputeInstanceQuerySubmit(t *testing.T) {
 
 	t.Logf("simple select driver integration test passed")
 }
-

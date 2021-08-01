@@ -133,20 +133,21 @@ const (
 		]
 	}
 	`
-	GoogleContainerHost string = "container.googleapis.com"
-	GoogleComputeHost string = "compute.googleapis.com"
-	GoogleProjectDefault string = "infraql-demo"
-	NetworkInsertPath string = "/compute/v1/projects/infraql-demo/global/networks"
-	networkDeletePath string = "/compute/v1/projects/%s/global/networks/%s"
-	NetworkInsertURL string = "https://" + GoogleComputeHost + NetworkInsertPath
-	SubnetworkInsertPath string = "/compute/v1/projects/infraql-demo/regions/australia-southeast1/subnetworks"
-	IPInsertPath string = "/compute/v1/projects/infraql-demo/regions/australia-southeast1/addresses"
-	FirewallInsertPath string = "/compute/v1/projects/infraql-demo/global/firewalls"
-	ComputeInstanceInsertPath string = "/compute/v1/projects/infraql-demo/zones/australia-southeast1-a/instances"
-	SubnetworkInsertURL string = "https://" + GoogleComputeHost + NetworkInsertPath
-	GoogleApisHost string = "www.googleapis.com"
-	GoogleComputeInsertOperationPath string = "/compute/v1/projects/infraql-demo/global/operations/operation-xxxxx-yyyyy-0001"
-	GoogleComputeInsertOperationURL string = "https://" + GoogleApisHost + GoogleComputeInsertOperationPath
+	SimpleGoogleComputeDisksListResponseFile    string = "test/assets/response/google/compute/disks/disks-list.json"
+	GoogleContainerHost                         string = "container.googleapis.com"
+	GoogleComputeHost                           string = "compute.googleapis.com"
+	GoogleProjectDefault                        string = "infraql-demo"
+	NetworkInsertPath                           string = "/compute/v1/projects/infraql-demo/global/networks"
+	networkDeletePath                           string = "/compute/v1/projects/%s/global/networks/%s"
+	NetworkInsertURL                            string = "https://" + GoogleComputeHost + NetworkInsertPath
+	SubnetworkInsertPath                        string = "/compute/v1/projects/infraql-demo/regions/australia-southeast1/subnetworks"
+	IPInsertPath                                string = "/compute/v1/projects/infraql-demo/regions/australia-southeast1/addresses"
+	FirewallInsertPath                          string = "/compute/v1/projects/infraql-demo/global/firewalls"
+	ComputeInstanceInsertPath                   string = "/compute/v1/projects/infraql-demo/zones/australia-southeast1-a/instances"
+	SubnetworkInsertURL                         string = "https://" + GoogleComputeHost + NetworkInsertPath
+	GoogleApisHost                              string = "www.googleapis.com"
+	GoogleComputeInsertOperationPath            string = "/compute/v1/projects/infraql-demo/global/operations/operation-xxxxx-yyyyy-0001"
+	GoogleComputeInsertOperationURL             string = "https://" + GoogleApisHost + GoogleComputeInsertOperationPath
 	simpleGoogleComputeOperationInitialResponse string = `
 	{
 		"id": "8485551673440766140",
@@ -185,19 +186,19 @@ const (
 func GetSimpleGoogleNetworkInsertResponse() string {
 	return fmt.Sprintf(
 		simpleGoogleComputeOperationInitialResponse,
-		"insert", 
-		NetworkInsertURL + "/kubernetes-the-hard-way-vpc", 
-		"RUNNING", 
+		"insert",
+		NetworkInsertURL+"/kubernetes-the-hard-way-vpc",
+		"RUNNING",
 		GoogleComputeInsertOperationURL,
 	)
 }
 
 func GetSimplePollOperationGoogleNetworkInsertResponse() string {
 	return fmt.Sprintf(
-		simpleGoogleComputePollOperationResponse, 
+		simpleGoogleComputePollOperationResponse,
 		"insert",
-		NetworkInsertURL + "/kubernetes-the-hard-way-vpc", 
-		"DONE", 
+		NetworkInsertURL+"/kubernetes-the-hard-way-vpc",
+		"DONE",
 		GoogleComputeInsertOperationURL,
 	)
 }
@@ -205,19 +206,19 @@ func GetSimplePollOperationGoogleNetworkInsertResponse() string {
 func GetSimpleGoogleNetworkDeleteResponse() string {
 	return fmt.Sprintf(
 		simpleGoogleComputeOperationInitialResponse,
-		"delete", 
-		NetworkInsertURL + "/kubernetes-the-hard-way-vpc", 
-		"RUNNING", 
+		"delete",
+		NetworkInsertURL+"/kubernetes-the-hard-way-vpc",
+		"RUNNING",
 		GoogleComputeInsertOperationURL,
 	)
 }
 
 func GetSimplePollOperationGoogleNetworkDeleteResponse() string {
 	return fmt.Sprintf(
-		simpleGoogleComputePollOperationResponse, 
+		simpleGoogleComputePollOperationResponse,
 		"delete",
-		NetworkInsertURL + "/kubernetes-the-hard-way-vpc", 
-		"DONE", 
+		NetworkInsertURL+"/kubernetes-the-hard-way-vpc",
+		"DONE",
 		GoogleComputeInsertOperationURL,
 	)
 }
@@ -225,19 +226,19 @@ func GetSimplePollOperationGoogleNetworkDeleteResponse() string {
 func GetSimpleGoogleSubnetworkInsertResponse() string {
 	return fmt.Sprintf(
 		simpleGoogleComputeOperationInitialResponse,
-		"insert", 
-		NetworkInsertURL + "/kubernetes-the-hard-way-subnet", 
-		"RUNNING", 
+		"insert",
+		NetworkInsertURL+"/kubernetes-the-hard-way-subnet",
+		"RUNNING",
 		GoogleComputeInsertOperationURL,
 	)
 }
 
 func GetSimplePollOperationGoogleSubnetworkInsertResponse() string {
 	return fmt.Sprintf(
-		simpleGoogleComputePollOperationResponse, 
+		simpleGoogleComputePollOperationResponse,
 		"insert",
-		NetworkInsertURL + "/kubernetes-the-hard-way-subnet", 
-		"DONE", 
+		NetworkInsertURL+"/kubernetes-the-hard-way-subnet",
+		"DONE",
 		GoogleComputeInsertOperationURL,
 	)
 }
@@ -245,9 +246,9 @@ func GetSimplePollOperationGoogleSubnetworkInsertResponse() string {
 func GetSimpleGoogleIPInsertResponse() string {
 	return fmt.Sprintf(
 		simpleGoogleComputeOperationInitialResponse,
-		"insert", 
-		NetworkInsertURL + "/kubernetes-the-hard-way-ip", 
-		"RUNNING", 
+		"insert",
+		NetworkInsertURL+"/kubernetes-the-hard-way-ip",
+		"RUNNING",
 		GoogleComputeInsertOperationURL,
 	)
 }
@@ -255,9 +256,9 @@ func GetSimpleGoogleIPInsertResponse() string {
 func GetSimplePollOperationGoogleIPInsertResponse() string {
 	return fmt.Sprintf(
 		simpleGoogleComputePollOperationResponse,
-		"insert", 
-		NetworkInsertURL + "/kubernetes-the-hard-way-ip", 
-		"DONE", 
+		"insert",
+		NetworkInsertURL+"/kubernetes-the-hard-way-ip",
+		"DONE",
 		GoogleComputeInsertOperationURL,
 	)
 }
@@ -266,18 +267,18 @@ func GetSimpleGoogleFirewallInsertResponse() string {
 	return fmt.Sprintf(
 		simpleGoogleComputeOperationInitialResponse,
 		"insert",
-		NetworkInsertURL + "/kubernetes-the-hard-way-allow-internal-fw", 
-		"RUNNING", 
+		NetworkInsertURL+"/kubernetes-the-hard-way-allow-internal-fw",
+		"RUNNING",
 		GoogleComputeInsertOperationURL,
 	)
 }
 
 func GetSimplePollOperationGoogleFirewallInsertResponse() string {
 	return fmt.Sprintf(
-		simpleGoogleComputePollOperationResponse, 
+		simpleGoogleComputePollOperationResponse,
 		"insert",
-		NetworkInsertURL + "/kubernetes-the-hard-way-allow-internal-fw", 
-		"DONE", 
+		NetworkInsertURL+"/kubernetes-the-hard-way-allow-internal-fw",
+		"DONE",
 		GoogleComputeInsertOperationURL,
 	)
 }
@@ -285,19 +286,19 @@ func GetSimplePollOperationGoogleFirewallInsertResponse() string {
 func GetSimpleGoogleComputeInstanceInsertResponse() string {
 	return fmt.Sprintf(
 		simpleGoogleComputeOperationInitialResponse,
-		"insert", 
-		NetworkInsertURL + "/controller-0", 
-		"RUNNING", 
+		"insert",
+		NetworkInsertURL+"/controller-0",
+		"RUNNING",
 		GoogleComputeInsertOperationURL,
 	)
 }
 
 func GetSimplePollOperationGoogleComputeInstanceInsertResponse() string {
 	return fmt.Sprintf(
-		simpleGoogleComputePollOperationResponse, 
+		simpleGoogleComputePollOperationResponse,
 		"insert",
-		NetworkInsertURL + "/controller-0", 
-		"DONE", 
+		NetworkInsertURL+"/controller-0",
+		"DONE",
 		GoogleComputeInsertOperationURL,
 	)
 }

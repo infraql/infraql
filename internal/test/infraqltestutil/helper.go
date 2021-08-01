@@ -7,6 +7,7 @@ import (
 	"os"
 	"testing"
 
+	"infraql/internal/iql/util"
 	"infraql/internal/test/testutil"
 )
 
@@ -20,9 +21,9 @@ func RunStdOutTestAgainstFiles(t *testing.T, testSubject func(*testing.T), possi
 
 	// copy the output in a separate goroutine so printing can't block indefinitely
 	go func() {
-			var buf bytes.Buffer
-			io.Copy(&buf, r)
-			outC <- buf.String()
+		var buf bytes.Buffer
+		io.Copy(&buf, r)
+		outC <- buf.String()
 	}()
 	w.Close()
 	os.Stdout = old // restoring the real stdout
@@ -31,17 +32,16 @@ func RunStdOutTestAgainstFiles(t *testing.T, testSubject func(*testing.T), possi
 
 	checkPossibleMatchFiles(t, out, possibleExpectedOutputFiles)
 
-	
 }
 
 func checkPossibleMatchFiles(t *testing.T, subject string, possibleExpectedOutputFiles []string) {
 	hasMatchedExpected := false
 	for _, expectedOpFile := range possibleExpectedOutputFiles {
-		expF, err := GetFilePathFromRepositoryRoot(expectedOpFile)
+		expF, err := util.GetFilePathFromRepositoryRoot(expectedOpFile)
 		if err != nil {
 			t.Fatalf("test failed: %v", err)
 		}
-		if !testutil.StringEqualsFileContents(t, subject, expF) {
+		if !testutil.StringEqualsFileContents(t, subject, expF, false) {
 			t.Logf("NOT THIS TIME: processed response did NOT match expected file contents as per: %s, contents = '%s'", expectedOpFile, subject)
 			continue
 		}
@@ -49,7 +49,6 @@ func checkPossibleMatchFiles(t *testing.T, subject string, possibleExpectedOutpu
 		hasMatchedExpected = true
 		break
 	}
-	
 
 	if !hasMatchedExpected {
 		t.Fatalf("FAIL: output does NOT match any possibility")
@@ -59,10 +58,10 @@ func checkPossibleMatchFiles(t *testing.T, subject string, possibleExpectedOutpu
 }
 
 func RunCaptureTestAgainstFiles(t *testing.T, testSubject func(*testing.T, *bufio.Writer), possibleExpectedOutputFiles []string) {
-	
+
 	var b bytes.Buffer
-  outFile := bufio.NewWriter(&b)
-  
+	outFile := bufio.NewWriter(&b)
+
 	testSubject(t, outFile)
 
 	outFile.Flush()

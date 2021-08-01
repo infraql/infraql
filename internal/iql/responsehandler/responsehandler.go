@@ -24,7 +24,7 @@ func handleEmptyWriter(outputWriter output.IOutputWriter, err error) {
 func HandleResponse(handlerCtx *handler.HandlerContext, response dto.ExecutorOutput) error {
 	var outputWriter output.IOutputWriter
 	var err error
-	log.Infoln(fmt.Sprintf("response from query = '%v'", response.Result))
+	log.Debugln(fmt.Sprintf("response from query = '%v'", response.Result))
 	if response.Msg != nil {
 		for _, msg := range response.Msg.WorkingMessages {
 			handlerCtx.Outfile.Write([]byte(msg + fmt.Sprintln("")))
