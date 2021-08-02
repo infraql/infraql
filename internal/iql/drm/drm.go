@@ -78,7 +78,7 @@ type PreparedStatementCtx struct {
 	TxnIdControlColName     string
 	InsIdControlColName     string
 	NonControlColumns       []ColumnMetadata
-	TxnCtrlCtrs             dto.TxnControlCounters
+	TxnCtrlCtrs             *dto.TxnControlCounters
 }
 
 func (ps PreparedStatementCtx) GetGCHousekeepingQueries() string {
@@ -97,7 +97,7 @@ type DRMConfig interface {
 	GenerateDDL(util.AnnotatedTabulation, int) []string
 	GetGolangValue(string) interface{}
 	GenerateInsertDML(util.AnnotatedTabulation, *txncounter.TxnCounterManager, int) (PreparedStatementCtx, error)
-	GenerateSelectDML(util.AnnotatedTabulation, dto.TxnControlCounters, sqlparser.SQLNode, *sqlparser.Where) (PreparedStatementCtx, error)
+	GenerateSelectDML(util.AnnotatedTabulation, *dto.TxnControlCounters, sqlparser.SQLNode, *sqlparser.Where) (PreparedStatementCtx, error)
 	ExecuteInsertDML(sqlengine.SQLEngine, *PreparedStatementCtx, map[string]interface{}) (sql.Result, error)
 	QueryDML(sqlengine.SQLEngine, *PreparedStatementCtx, map[string]interface{}) (*sql.Rows, error)
 }
@@ -268,7 +268,7 @@ func (dc *StaticDRMConfig) GenerateInsertDML(tabAnnotated util.AnnotatedTabulati
 			TxnIdControlColName:     txnIdColName,
 			InsIdControlColName:     insIdColName,
 			NonControlColumns:       columns,
-			TxnCtrlCtrs: dto.TxnControlCounters{
+			TxnCtrlCtrs: &dto.TxnControlCounters{
 				GenId:                 txnCtrMgr.GetCurrentGenerationId(),
 				SessionId:             txnCtrMgr.GetCurrentSessionId(),
 				TxnId:                 txnCtrMgr.GetNextTxnId(),
@@ -279,7 +279,7 @@ func (dc *StaticDRMConfig) GenerateInsertDML(tabAnnotated util.AnnotatedTabulati
 		nil
 }
 
-func (dc *StaticDRMConfig) GenerateSelectDML(tabAnnotated util.AnnotatedTabulation, txnCtrlCtrs dto.TxnControlCounters, node sqlparser.SQLNode, rewrittenWhere *sqlparser.Where) (PreparedStatementCtx, error) {
+func (dc *StaticDRMConfig) GenerateSelectDML(tabAnnotated util.AnnotatedTabulation, txnCtrlCtrs *dto.TxnControlCounters, node sqlparser.SQLNode, rewrittenWhere *sqlparser.Where) (PreparedStatementCtx, error) {
 	var q strings.Builder
 	var quotedColNames, quotedWhereColNames []string
 	var columns []ColumnMetadata

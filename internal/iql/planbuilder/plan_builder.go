@@ -178,7 +178,7 @@ func handleDelete(handlerCtx *handler.HandlerContext, node *sqlparser.Delete) (p
 		}
 		return primitiveGenerator.deleteExecutor(handlerCtx, node)
 	} else {
-		return primitivebuilder.NewHTTPRestPrimitive(nil, nil, nil), nil
+		return primitivebuilder.NewHTTPRestPrimitive(nil, nil, nil, nil), nil
 	}
 	return nil, nil
 }
@@ -192,7 +192,7 @@ func handleInsert(handlerCtx *handler.HandlerContext, node *sqlparser.Insert) (p
 		}
 		return primitiveGenerator.insertExecutor(handlerCtx, node, util.DefaultRowSort)
 	} else {
-		return primitivebuilder.NewHTTPRestPrimitive(nil, nil, nil), nil
+		return primitivebuilder.NewHTTPRestPrimitive(nil, nil, nil, nil), nil
 	}
 	return nil, nil
 }
@@ -206,7 +206,7 @@ func handleExec(handlerCtx *handler.HandlerContext, node *sqlparser.Exec) (plan.
 		}
 		return primitiveGenerator.execExecutor(handlerCtx, node)
 	}
-	return primitivebuilder.NewHTTPRestPrimitive(nil, nil, nil), nil
+	return primitivebuilder.NewHTTPRestPrimitive(nil, nil, nil, nil), nil
 }
 
 func handleShow(handlerCtx *handler.HandlerContext, node *sqlparser.Show) (plan.IPrimitive, error) {
@@ -265,6 +265,11 @@ func BuildPlanFromContext(handlerCtx *handler.HandlerContext) (*plan.Plan, error
 	planKey := handlerCtx.Query
 	if qp, ok := handlerCtx.LRUCache.Get(planKey); ok {
 		log.Infoln("retrieving query plan from cache")
+		pl, ok := qp.(*plan.Plan)
+		if ok {
+			pl.Instructions.SetTxnId(handlerCtx.TxnCounterMgr.GetNextTxnId())
+			return pl, nil
+		}
 		return qp.(*plan.Plan), nil
 	}
 	qPlan := &plan.Plan{

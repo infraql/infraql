@@ -38,6 +38,7 @@ type PrimitiveBuilder struct {
 	columnOrder       []string
 	commentDirectives sqlparser.CommentDirectives
 	txnCounterManager *txncounter.TxnCounterManager
+	txnCtrlCtrs       *dto.TxnControlCounters
 
 	// per query -- SELECT only
 	insertValOnlyRows          map[int]map[int]interface{}
@@ -54,6 +55,10 @@ type PrimitiveBuilder struct {
 	symTab symtab.HashMapTreeSymTab
 
 	where *sqlparser.Where
+}
+
+func (pb *PrimitiveBuilder) SetTxnCtrlCtrs(tc *dto.TxnControlCounters) {
+	pb.txnCtrlCtrs = tc
 }
 
 func (pb *PrimitiveBuilder) GetSymbol(k interface{}) (symtab.SymTabEntry, error) {
@@ -228,9 +233,10 @@ func (pb PrimitiveBuilder) GetDRMConfig() drm.DRMConfig {
 }
 
 type HTTPRestPrimitive struct {
-	Provider   provider.IProvider
-	Executor   func(pc plan.IPrimitiveCtx) dto.ExecutorOutput
-	Preparator func() *drm.PreparedStatementCtx
+	Provider      provider.IProvider
+	Executor      func(pc plan.IPrimitiveCtx) dto.ExecutorOutput
+	Preparator    func() *drm.PreparedStatementCtx
+	TxnControlCtr *dto.TxnControlCounters
 }
 
 type MetaDataPrimitive struct {
@@ -242,6 +248,18 @@ type MetaDataPrimitive struct {
 type LocalPrimitive struct {
 	Executor   func(pc plan.IPrimitiveCtx) dto.ExecutorOutput
 	Preparator func() *drm.PreparedStatementCtx
+}
+
+func (pr *HTTPRestPrimitive) SetTxnId(id int) {
+	if pr.TxnControlCtr != nil {
+		pr.TxnControlCtr.TxnId = id
+	}
+}
+
+func (pr *MetaDataPrimitive) SetTxnId(id int) {
+}
+
+func (pr *LocalPrimitive) SetTxnId(id int) {
 }
 
 func (pr *HTTPRestPrimitive) Execute(pc plan.IPrimitiveCtx) dto.ExecutorOutput {
@@ -293,11 +311,12 @@ func NewMetaDataPrimitive(provider provider.IProvider, executor func(pc plan.IPr
 	}
 }
 
-func NewHTTPRestPrimitive(provider provider.IProvider, executor func(pc plan.IPrimitiveCtx) dto.ExecutorOutput, preparator func() *drm.PreparedStatementCtx) *HTTPRestPrimitive {
+func NewHTTPRestPrimitive(provider provider.IProvider, executor func(pc plan.IPrimitiveCtx) dto.ExecutorOutput, preparator func() *drm.PreparedStatementCtx, txnCtrlCtr *dto.TxnControlCounters) *HTTPRestPrimitive {
 	return &HTTPRestPrimitive{
-		Provider:   provider,
-		Executor:   executor,
-		Preparator: preparator,
+		Provider:      provider,
+		Executor:      executor,
+		Preparator:    preparator,
+		TxnControlCtr: txnCtrlCtr,
 	}
 }
 
