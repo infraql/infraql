@@ -251,7 +251,9 @@ type LocalPrimitive struct {
 }
 
 func (pr *HTTPRestPrimitive) SetTxnId(id int) {
-	pr.TxnControlCtr.TxnId = id
+	if pr.TxnControlCtr != nil {
+		pr.TxnControlCtr.TxnId = id
+	}
 }
 
 func (pr *MetaDataPrimitive) SetTxnId(id int) {
