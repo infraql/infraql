@@ -1,2 +1,2 @@
-MajorVersion=2
-MinorVersion=1
+MajorVersion=0
+MinorVersion=2
