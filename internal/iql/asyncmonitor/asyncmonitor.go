@@ -33,6 +33,9 @@ type AsyncHttpMonitorPrimitive struct {
 	noStatus            bool
 }
 
+func (pr *AsyncHttpMonitorPrimitive) SetTxnId(id int) {
+}
+
 func (asm *AsyncHttpMonitorPrimitive) Execute(pc plan.IPrimitiveCtx) dto.ExecutorOutput {
 	if asm.Executor != nil {
 		if pc == nil {

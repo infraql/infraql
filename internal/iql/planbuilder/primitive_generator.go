@@ -440,6 +440,7 @@ func (pb *primitiveGenerator) insertExecutor(handlerCtx *handler.HandlerContext,
 		prov,
 		ex,
 		nil,
+		nil,
 	)
 	if !pb.PrimitiveBuilder.IsAwait() {
 		return insertPrimitive, nil
@@ -524,6 +525,7 @@ func (pb *primitiveGenerator) deleteExecutor(handlerCtx *handler.HandlerContext,
 	deletePrimitive := primitivebuilder.NewHTTPRestPrimitive(
 		prov,
 		ex,
+		nil,
 		nil,
 	)
 	if !pb.PrimitiveBuilder.IsAwait() {
@@ -612,6 +614,7 @@ func (pb *primitiveGenerator) execExecutor(handlerCtx *handler.HandlerContext, n
 	execPrimitive := primitivebuilder.NewHTTPRestPrimitive(
 		prov,
 		ex,
+		nil,
 		nil,
 	)
 	if !pb.PrimitiveBuilder.IsAwait() {

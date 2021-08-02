@@ -23,6 +23,8 @@ type IPrimitive interface {
 	Execute(IPrimitiveCtx) dto.ExecutorOutput
 
 	GetPreparedStatementContext() *drm.PreparedStatementCtx
+
+	SetTxnId(int)
 }
 
 type Plan struct {

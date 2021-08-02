@@ -67,7 +67,7 @@ type SQLEngine interface {
 	Query(string, ...interface{}) (*sql.Rows, error)
 	ExecFileLocal(string) error
 	ExecFile(string) error
-	GCCollectObsolete(dto.TxnControlCounters) error
+	GCCollectObsolete(*dto.TxnControlCounters) error
 	GCCollectObsoleteAll() error
 	GCCollectUnreachable() error
 	GCEnactFull() error
@@ -324,7 +324,7 @@ func (se SQLiteEngine) GCCollectObsoleteAll() error {
 	return se.collectObsolete()
 }
 
-func (se SQLiteEngine) GCCollectObsolete(tcc dto.TxnControlCounters) error {
+func (se SQLiteEngine) GCCollectObsolete(tcc *dto.TxnControlCounters) error {
 	return se.collectObsoleteQualified(tcc)
 }
 
@@ -340,7 +340,7 @@ func (se SQLiteEngine) collectObsolete() error {
 	return se.concertedQueryGen(cleanupObsoleteQuery)
 }
 
-func (se SQLiteEngine) collectObsoleteQualified(tcc dto.TxnControlCounters) error {
+func (se SQLiteEngine) collectObsoleteQualified(tcc *dto.TxnControlCounters) error {
 	return se.concertedQueryGen(cleanupObsoleteQualifiedQuery, tcc.GenId, tcc.SessionId, tcc.TxnId)
 }
 

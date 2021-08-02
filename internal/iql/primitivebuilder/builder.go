@@ -38,9 +38,7 @@ type SingleSelect struct {
 	drmCfg                     drm.DRMConfig
 	insertPreparedStatementCtx *drm.PreparedStatementCtx
 	selectPreparedStatementCtx *drm.PreparedStatementCtx
-	generationId               int
-	txnId                      int
-	insertId                   int
+	txnCtrlCtr                 *dto.TxnControlCounters
 	rowSort                    func(map[string]map[string]interface{}) []string
 }
 
@@ -60,6 +58,7 @@ func NewSingleSelect(pb *PrimitiveBuilder, handlerCtx *handler.HandlerContext, t
 		drmCfg:                     handlerCtx.DrmConfig,
 		insertPreparedStatementCtx: insertCtx,
 		selectPreparedStatementCtx: selectCtx,
+		txnCtrlCtr:                 selectCtx.TxnCtrlCtrs,
 	}
 }
 
@@ -196,6 +195,7 @@ func (ss *SingleSelect) Build() error {
 		prov,
 		ex,
 		prep,
+		ss.txnCtrlCtr,
 	)
 	return nil
 }

@@ -798,6 +798,7 @@ func (p *primitiveGenerator) analyzeSelectDetail(handlerCtx *handler.HandlerCont
 	if err != nil {
 		return err
 	}
+	p.PrimitiveBuilder.SetTxnCtrlCtrs(insPsc.TxnCtrlCtrs)
 	for _, col := range cols {
 		// TODO: get rid of prefix garbage
 		foundSchemaPrefixed := schema.FindByPath(colPrefix + col.Name)
