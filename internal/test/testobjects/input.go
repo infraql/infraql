@@ -11,7 +11,7 @@ const (
 	--
 	-- create VPC 
 	--
-	INSERT /*+ AWAIT  */ INTO compute.networks
+	INSERT /*+ AWAIT  */ INTO google.compute.networks
 	(
 	project,
 	data__name,
@@ -24,13 +24,13 @@ const (
 	false,
 	'{"routingMode":"REGIONAL"}';
 	`
-	SimpleInsertExecComputeNetwork string = `EXEC /*+ AWAIT */ compute.networks.insert @project='infraql-demo' @@json='{ 
+	SimpleInsertExecComputeNetwork string = `EXEC /*+ AWAIT */ google.compute.networks.insert @project='infraql-demo' @@json='{ 
 		"name": "kubernetes-the-hard-way-vpc",
 	  "autoCreateSubnetworks": false,
 	  "routingConfig": {"routingMode":"REGIONAL"}
 		}';`
-	SimpleDeleteComputeNetwork                                           string = `delete /*+ AWAIT  */ from compute.networks WHERE project = 'infraql-demo' and network = 'kubernetes-the-hard-way-vpc';`
-	SimpleDeleteExecComputeNetwork                                       string = `EXEC /*+ AWAIT */ compute.networks.delete @project = 'infraql-demo', @network = 'kubernetes-the-hard-way-vpc';`
+	SimpleDeleteComputeNetwork                                           string = `delete /*+ AWAIT  */ from google.compute.networks WHERE project = 'infraql-demo' and network = 'kubernetes-the-hard-way-vpc';`
+	SimpleDeleteExecComputeNetwork                                       string = `EXEC /*+ AWAIT */ google.compute.networks.delete @project = 'infraql-demo', @network = 'kubernetes-the-hard-way-vpc';`
 	SimpleAggCountGroupedGoogleContainerSubnetworkAsc                    string = "select ipCidrRange, sum(5) cc  from  google.container.`projects.aggregated.usableSubnetworks` where parent = 'projects/testing-project' group by \"ipCidrRange\" having sum(5) >= 5 order by ipCidrRange asc;"
 	SimpleAggCountGroupedGoogleContainerSubnetworkDesc                   string = "select ipCidrRange, sum(5) cc  from  google.container.`projects.aggregated.usableSubnetworks` where parent = 'projects/testing-project' group by \"ipCidrRange\" having sum(5) >= 5 order by ipCidrRange desc;"
 	SelectGoogleComputeDisksOrderCreationTmstpAsc                        string = `select name, sizeGb, creationTimestamp from google.compute.disks where zone = 'australia-southeast1-b' AND /* */ project = 'testing-project' ORDER BY creationTimestamp asc;`

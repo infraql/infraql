@@ -152,7 +152,21 @@
       ],
     },
     {
-      "name": "SHOW INSERT... ;\" -- prebuilt with cmake",
+      "name": "SHOW INSERT bq.jobs ;\" -- prebuilt with cmake",
+      "type": "go",
+      "request": "launch",
+      "mode": "exec",
+      "program": "${workspaceFolder}/build/infraql",
+      "args": [
+        "exec",
+        "--keyfilepath=${workspaceFolder}/keys/sa-key.json",
+        "SHOW INSERT INTO google.bigquery.jobs;;",
+        "-o",
+        "pptext"
+      ],
+    },
+    {
+      "name": "SHOW INSERT...instances( project...) ;\" -- prebuilt with cmake",
       "type": "go",
       "request": "launch",
       "mode": "exec",
@@ -251,7 +265,7 @@
       ],
     },
     {
-      "name": "Launch exec \"SELECT storge.buckets ... ;\" -- prebuilt with cmake",
+      "name": "Launch exec \"SELECT bq.datasets ... ;\" -- prebuilt with cmake",
       "type": "go",
       "request": "launch",
       "mode": "exec",
@@ -259,7 +273,7 @@
       "args": [
         "exec",
         "--keyfilepath=${workspaceFolder}/keys/sa-key.json",
-        "select selfLink, projectNumber from storage.buckets sb WHERE sb.project = 'lab-kr-network-01';",
+        "select * from google.bigquery.datasets where projectId = 'lab-kr-network-01';",
         "-o",
         "json"
       ],

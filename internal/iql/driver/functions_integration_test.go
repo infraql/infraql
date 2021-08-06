@@ -53,7 +53,7 @@ func TestSelectComputeDisksOrderByCrtTmstpAscPlusJsonExtract(t *testing.T) {
 		handlerCtx.Outfile = outFile
 		responsehandler.HandleResponse(&handlerCtx, response)
 
-		ProcessQuery(handlerCtx)
+		ProcessQuery(&handlerCtx)
 	}
 
 	infraqltestutil.SetupSimpleSelectGoogleComputeDisks(t)
@@ -95,7 +95,7 @@ func TestSelectComputeDisksOrderByCrtTmstpAscPlusCoalesceJsonExtract(t *testing.
 		handlerCtx.Outfile = outFile
 		responsehandler.HandleResponse(&handlerCtx, response)
 
-		ProcessQuery(handlerCtx)
+		ProcessQuery(&handlerCtx)
 	}
 
 	infraqltestutil.SetupSimpleSelectGoogleComputeDisks(t)
@@ -137,7 +137,7 @@ func TestSelectComputeDisksOrderByCrtTmstpAscPlusCoalesceJsonInstr(t *testing.T)
 		handlerCtx.Outfile = outFile
 		responsehandler.HandleResponse(&handlerCtx, response)
 
-		ProcessQuery(handlerCtx)
+		ProcessQuery(&handlerCtx)
 	}
 
 	infraqltestutil.SetupSimpleSelectGoogleComputeDisks(t)

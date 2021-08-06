@@ -65,7 +65,7 @@ func TestSimpleSelectGoogleComputeInstanceDriver(t *testing.T) {
 	}
 	handlerCtx.TxnCounterMgr = tc
 
-	ProcessQuery(handlerCtx)
+	ProcessQuery(&handlerCtx)
 
 	t.Logf("simple select driver integration test passed")
 }
@@ -276,7 +276,7 @@ func TestK8sTheHardWayAsync(t *testing.T) {
 		handlerCtx.TxnCounterMgr = tc
 
 		handlerCtx.RawQuery = strings.TrimSpace(string(megaQueryConcat))
-		ProcessQuery(handlerCtx)
+		ProcessQuery(&handlerCtx)
 	}
 
 	infraqltestutil.SetupK8sTheHardWayE2eSuccess(t)
@@ -323,7 +323,7 @@ func TestSimpleShowResourcesFiltered(t *testing.T) {
 		}
 		handlerCtx.TxnCounterMgr = tc
 
-		ProcessQuery(handlerCtx)
+		ProcessQuery(&handlerCtx)
 	}
 
 	infraqltestutil.RunCaptureTestAgainstFiles(t, testSubject, []string{testobjects.ExpectedShowResourcesFilteredFile})
@@ -374,7 +374,7 @@ func TestSimpleDryRunK8sTheHardWayDriver(t *testing.T) {
 		}
 		handlerCtx.TxnCounterMgr = tc
 
-		ProcessDryRun(handlerCtx)
+		ProcessDryRun(&handlerCtx)
 	}
 
 	infraqltestutil.RunCaptureTestAgainstFiles(t, testSubject, []string{testobjects.ExpectedK8STheHardWayRenderedFile})
@@ -419,7 +419,7 @@ func TestSimpleShowInsertComputeAddressesRequired(t *testing.T) {
 		}
 		handlerCtx.TxnCounterMgr = tc
 
-		ProcessQuery(handlerCtx)
+		ProcessQuery(&handlerCtx)
 	}
 
 	infraqltestutil.RunCaptureTestAgainstFiles(t, testSubject, []string{testobjects.ExpectedShowInsertAddressesRequiredFile})

@@ -40,6 +40,16 @@ func (sel *DefaultGoogleMethodSelector) GetMethodForAction(resource *metadata.Re
 		methodName = "delete"
 	case "insert":
 		methodName = "insert"
+		m, ok := resource.Methods[methodName]
+		if ok {
+			return &m, methodName, nil
+		}
+		methodName = "create"
+		m, ok = resource.Methods[methodName]
+		if ok {
+			return &m, methodName, nil
+		}
+		return nil, "", fmt.Errorf("iql action = '%s' curently not supported, there is no method mapping possible for any resource", iqlAction)
 	default:
 		return nil, "", fmt.Errorf("iql action = '%s' curently not supported, there is no method mapping possible for any resource", iqlAction)
 	}

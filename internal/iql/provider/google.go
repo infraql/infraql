@@ -129,20 +129,20 @@ func (gp *GoogleProvider) InferDescribeMethod(rsc *metadata.Resource) (*metadata
 		return nil, "", fmt.Errorf("cannot infer describe method from nil resource")
 	}
 	var method metadata.Method
-	m, methodPresent := rsc.Methods["get"]
+	m, methodPresent := rsc.Methods["list"]
 	if methodPresent {
 		method = m
-		return &method, "get", nil
+		return &method, "list", nil
 	}
 	m, methodPresent = rsc.Methods["aggregatedList"]
 	if methodPresent {
 		method = m
 		return &method, "aggregatedList", nil
 	}
-	m, methodPresent = rsc.Methods["list"]
+	m, methodPresent = rsc.Methods["get"]
 	if methodPresent {
 		method = m
-		return &method, "list", nil
+		return &method, "get", nil
 	}
 	var ms []string
 	for k, v := range rsc.Methods {
@@ -151,6 +151,8 @@ func (gp *GoogleProvider) InferDescribeMethod(rsc *metadata.Resource) (*metadata
 			method = v
 			return &method, k, nil
 		}
+	}
+	for k, v := range rsc.Methods {
 		if strings.HasPrefix(k, "list") {
 			method = v
 			return &method, k, nil
@@ -459,7 +461,7 @@ func (gp *GoogleProvider) DescribeResource(serviceName string, resourceName stri
 	if !ok {
 		return nil, header, describeErr
 	}
-	m, _, err := gp.InferDescribeMethod(&rsc)
+	m, methodName, err := gp.InferDescribeMethod(&rsc)
 	if err != nil {
 		return nil, nil, canonicalError
 	}
@@ -468,11 +470,23 @@ func (gp *GoogleProvider) DescribeResource(serviceName string, resourceName stri
 	if err != nil {
 		return nil, nil, err
 	}
-	retVal, ok := sm[schemaName]
+	responseSch, ok := sm[schemaName]
 	if !ok {
 		return nil, nil, fmt.Errorf("can't find schema '%s'", schemaName)
 	}
-	return &retVal, header, err
+	if strings.HasPrefix(methodName, "get") {
+		return &responseSch, header, err
+	}
+	itemS, _ := responseSch.GetSelectListItems(gp.GetDefaultKeyForSelectItems())
+	if itemS == nil {
+		return nil, nil, fmt.Errorf("could not obtain describe metadata")
+	}
+	is := itemS.Items
+	itemObjS, _ := is.GetSchema(itemS.SchemaCentral)
+	if itemObjS == nil {
+		return nil, nil, fmt.Errorf("could not obtain describe metadata")
+	}
+	return itemObjS, header, err
 }
 
 func parseServiceAccountFile(credentialFile string) (googleServiceAccount, error) {

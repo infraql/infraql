@@ -314,7 +314,9 @@ func BuildPlanFromContext(handlerCtx *handler.HandlerContext) (*plan.Plan, error
 
 	qPlan.Instructions = instructions
 
-	handlerCtx.LRUCache.Set(planKey, qPlan)
+	if instructions != nil {
+		handlerCtx.LRUCache.Set(planKey, qPlan)
+	}
 
 	return qPlan, err
 }

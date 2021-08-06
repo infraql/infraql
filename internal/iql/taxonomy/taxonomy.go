@@ -195,12 +195,21 @@ func getHids(handlerCtx *handler.HandlerContext, node sqlparser.SQLNode) (*dto.H
 	default:
 		return nil, fmt.Errorf("cannot resolve taxonomy")
 	}
+	if hIds.ProviderStr == "" {
+		if handlerCtx.CurrentProvider == "" {
+			return nil, fmt.Errorf("No provider selected, please set a provider using the USE command, or specify a three part object identifier in your IQL query.")
+		}
+		hIds.ProviderStr = handlerCtx.CurrentProvider
+	}
 	return hIds, nil
 }
 
 func GetHeirarchyFromStatement(handlerCtx *handler.HandlerContext, node sqlparser.SQLNode) (*HeirarchyObjects, error) {
 	var hIds *dto.HeirarchyIdentifiers
 	hIds, err := getHids(handlerCtx, node)
+	if err != nil {
+		return nil, err
+	}
 	methodRequired := true
 	var methodAction string
 	switch n := node.(type) {

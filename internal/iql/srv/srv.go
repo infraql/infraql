@@ -41,10 +41,10 @@ func handleConnection(c net.Conn, runtimeCtx dto.RuntimeCtx, lruCache *lrucache.
 		handlerContext.Outfile = c
 		handlerContext.OutErrFile = c
 		if handlerContext.RuntimeContext.DryRunFlag {
-			driver.ProcessDryRun(handlerContext)
+			driver.ProcessDryRun(&handlerContext)
 			continue
 		}
-		driver.ProcessQuery(handlerContext)
+		driver.ProcessQuery(&handlerContext)
 	}
 	c.Close()
 }
