@@ -1,6 +1,6 @@
 
 
-INSERT /*+ AWAIT  */ INTO compute.networks
+INSERT /*+ AWAIT  */ INTO google.compute.networks
 (
  project,
  data__name,

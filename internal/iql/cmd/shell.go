@@ -38,8 +38,8 @@ import (
 )
 
 const (
-	shellLongStr string = `InfraQL Shell %s
-Copyright (c) 2020, InfraQL. All rights reserved.
+	shellLongStr string = `InfraQL Command Shell %s
+Copyright (c) 2021, InfraQL Technologies. All rights reserved.
 Welcome to the interactive shell for running InfraQL commands.
 ---`
 
@@ -197,7 +197,7 @@ var shellCmd = &cobra.Command{
 					queryToExecute := sb.String()
 					handlerCtx.RawQuery = queryToExecute
 					l.WriteToHistory(queryToExecute)
-					RunCommand(handlerCtx, outfile, outErrFile)
+					RunCommand(&handlerCtx, outfile, outErrFile)
 					sb.Reset()
 					sb.WriteString(line[semiColonIdx+1:])
 				} else {

@@ -421,11 +421,17 @@ func (pb *primitiveGenerator) analyzeWhere(where *sqlparser.Where, schema *metad
 	}
 
 	if len(remainingRequiredParameters) > 0 {
+		if where == nil {
+			return nil, fmt.Errorf("WHERE clause not supplied, run DESCRIBE EXTENDED for the resource to see required parameters")
+		}
 		var keys []string
 		for k := range remainingRequiredParameters {
 			keys = append(keys, k)
 		}
 		return nil, fmt.Errorf("Query cannot be executed, missing required parameters: { %s }", strings.Join(keys, ", "))
+	}
+	if where == nil {
+		return nil, nil
 	}
 	return &sqlparser.Where{Type: where.Type, Expr: retVal}, nil
 }
@@ -811,7 +817,7 @@ func (p *primitiveGenerator) analyzeSelectDetail(handlerCtx *handler.HandlerCont
 			continue
 		}
 		if foundSchema == nil && col.IsColumn {
-			return fmt.Errorf("column = '%v' is NOT present in either:  - data returned from provider, - acceptable parameters", col)
+			return fmt.Errorf("column = '%s' is NOT present in either:  - data returned from provider, - acceptable parameters, use the DESCRIBE command to view available fields for SELECT operations", col.Name)
 		}
 		selectTabulation.PushBackColumn(metadata.NewColumnDescriptor(col.Alias, col.Name, col.DecoratedColumn, foundSchema, col.Val))
 		log.Debugln(fmt.Sprintf("foundSchemaPrefixed = '%v'", foundSchemaPrefixed))

@@ -51,6 +51,14 @@ func GoogleServiceDiscoveryDocParser(bytes []byte, dbEngine sqlengine.SQLEngine,
 	serviceName := result["id"].(string)
 	serviceId := TranslateServiceKeyGoogleToIql(serviceName)
 	baseUrl := result["baseUrl"].(string)
+	var version string
+	v, ok := result["version"]
+	if ok {
+		vStr, ok := v.(string)
+		if ok {
+			version = vStr
+		}
+	}
 	resources, _ := findGoogleResourcesMaps("", result)
 	keys := make(map[string]metadata.Resource)
 	for k, v := range resources {
@@ -103,6 +111,7 @@ func GoogleServiceDiscoveryDocParser(bytes []byte, dbEngine sqlengine.SQLEngine,
 		}
 	}
 	var tabluationsAnnotated []util.AnnotatedTabulation
+	extraSchemas := make(map[string]metadata.Schema)
 	for _, v := range schemas {
 		if v.IsArrayRef() {
 			continue
@@ -113,6 +122,29 @@ func GoogleServiceDiscoveryDocParser(bytes []byte, dbEngine sqlengine.SQLEngine,
 			tabulation := v.Tabulate(false)
 			annTab := util.NewAnnotatedTabulation(tabulation, dto.NewHeirarchyIdentifiers(provStr, svcStr, tabulation.GetName(), ""))
 			tabluationsAnnotated = append(tabluationsAnnotated, annTab)
+			if version == "v2" {
+				for pr, prVal := range v.Properties {
+					prValSc, _ := prVal.GetSchema(v.SchemaCentral)
+					if prValSc != nil {
+						if prValSc.Items.NamedRef == "" && prValSc.Items.SchemaRef != nil {
+							iSc, ok := prValSc.Items.SchemaRef["items"]
+							if !ok {
+								continue
+							}
+							iSc.ID = fmt.Sprintf("%s.%s.Items", v.ID, pr)
+							extraSchemas[iSc.ID] = iSc
+							prValSc.Items.SchemaRef["items"] = iSc
+							log.Infoln(fmt.Sprintf("prValSc = %v, iSc = %v", prValSc, iSc))
+							tb := iSc.Tabulate(false)
+							log.Infoln(fmt.Sprintf("tb = %v", tb))
+							if tb != nil {
+								annTab := util.NewAnnotatedTabulation(tb, dto.NewHeirarchyIdentifiers(provStr, svcStr, tb.GetName(), ""))
+								tabluationsAnnotated = append(tabluationsAnnotated, annTab)
+							}
+						}
+					}
+				}
+			}
 			// create table
 		case "array":
 			itemsSchema, _ := v.GetItemsSchema()
@@ -123,6 +155,9 @@ func GoogleServiceDiscoveryDocParser(bytes []byte, dbEngine sqlengine.SQLEngine,
 				tabluationsAnnotated = append(tabluationsAnnotated, annTab)
 			}
 		}
+	}
+	for k, v := range extraSchemas {
+		schemas[k] = v
 	}
 	db, err := dbEngine.GetDB()
 	if err != nil {

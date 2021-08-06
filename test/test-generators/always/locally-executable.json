@@ -82,10 +82,10 @@
       "verbose": true
     },
     {
-      "name": "Tabular stdout based DESCRIBE compute.instances",
+      "name": "Tabular stdout based DESCRIBE google.compute.instances",
       "output": "table",
       "instruction": "exec",
-      "query": "DESCRIBE compute.instances;",
+      "query": "DESCRIBE google.compute.instances;",
       "expected": [ 
         "\\|[\\|\\-]*\\|$",
         "\\|[\\W]+name[\\W]+\\|",
@@ -105,7 +105,7 @@
       "name": "Tabular stdout based SHOW INSERT test + assertion",
       "output": "table",
       "instruction": "exec",
-      "query": "show insert into compute.instances;",
+      "query": "show insert into google.compute.instances;",
       "expected": [ 
         "\\|[\\|\\-]*\\|$",
         "\\|[\\W]+insert_statement",
@@ -119,7 +119,7 @@
       "name": "Tabular stdout based SHOW METHODS test + assertion",
       "output": "table",
       "instruction": "exec",
-      "query": "show methods in compute.instances;",
+      "query": "show methods in google.compute.instances;",
       "expected": [ 
         "\\|[\\|\\-]*\\|$",
         "\\|[\\W]+MethodName"
@@ -241,7 +241,7 @@
       "delimiter": ";",
       "instruction": "exec",
       "headless": true,
-      "query": "show insert into compute.disks(zone, data__resourcePolicies);",
+      "query": "show insert into google.compute.disks(zone, data__resourcePolicies);",
       "output_file": "output/col-selected-show-insert-google-compute-disks.iql",
       "verbose": true,
       "expected": [ 

@@ -1,6 +1,8 @@
 --
 -- create VPC 
 --
+use google;
+
 INSERT /*+ AWAIT  */ INTO compute.networks
 (
  project,

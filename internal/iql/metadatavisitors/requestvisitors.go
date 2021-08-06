@@ -223,7 +223,7 @@ func (sv *SchemaRequestTemplateVisitor) retrieveTemplateVal(sc *metadata.Schema,
 		rv := make(map[string]interface{})
 		for k, v := range sc.Properties {
 			ss, idStr := v.GetSchema(sc.SchemaCentral)
-			if ss != nil && (idStr == "" || !sv.isVisited(idStr)) {
+			if ss != nil && ((idStr == "" && ss.Type != "array") || !sv.isVisited(idStr)) {
 				sv.recordSchemaVisited(idStr)
 				sv, err := sv.retrieveTemplateVal(ss, templateValName+"."+k)
 				if err != nil {

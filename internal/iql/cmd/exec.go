@@ -65,7 +65,7 @@ infraql exec -i iqlscripts/create-disk.iql --keyfilepath /mnt/c/tmp/infraql-demo
 		handlerCtx, err := entryutil.BuildHandlerContext(runtimeCtx, rdr, queryCache, sqlEngine)
 		iqlerror.PrintErrorAndExitOneIfError(err)
 		iqlerror.PrintErrorAndExitOneIfNil(&handlerCtx, "Handler context error")
-		RunCommand(handlerCtx, nil, nil)
+		RunCommand(&handlerCtx, nil, nil)
 	},
 }
 
@@ -80,7 +80,7 @@ func getOutputFile(filename string) (*os.File, error) {
 	}
 }
 
-func RunCommand(handlerCtx handler.HandlerContext, outfile io.Writer, outErrFile io.Writer) {
+func RunCommand(handlerCtx *handler.HandlerContext, outfile io.Writer, outErrFile io.Writer) {
 	if outfile == nil {
 		outfile, _ = getOutputFile(handlerCtx.RuntimeContext.OutfilePath)
 	}

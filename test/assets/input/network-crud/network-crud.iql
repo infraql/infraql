@@ -1,7 +1,7 @@
 --
 -- create VPC 
 --
-INSERT /*+ AWAIT  */ INTO compute.networks
+INSERT /*+ AWAIT  */ INTO google.compute.networks
 (
  project,
  data__name,
@@ -18,12 +18,12 @@ SELECT
 SELECT 
   name 
 FROM 
-  compute.networks 
+  google.compute.networks 
 WHERE 
   project = '{{ .global.project }}'
 ;
 
-DELETE /*+ AWAIT  */ FROM compute.networks
+DELETE /*+ AWAIT  */ FROM google.compute.networks
 WHERE 
   project = '{{ .global.project }}'
   AND
