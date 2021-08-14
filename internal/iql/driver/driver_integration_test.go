@@ -39,7 +39,7 @@ func TestSimpleSelectGoogleComputeInstanceDriver(t *testing.T) {
 	expectations := map[string]testhttpapi.HTTPRequestExpectations{
 		"compute.googleapis.com" + path: *ex,
 	}
-	exp := testhttpapi.NewExpectationStore()
+	exp := testhttpapi.NewExpectationStore(1)
 	for k, v := range expectations {
 		exp.Put(k, v)
 	}

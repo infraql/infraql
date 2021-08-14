@@ -48,7 +48,7 @@ func TestBasicHTTPSExamples(t *testing.T) {
 	// Heavyweight test on httpexec request context.
 	requestCtx := CreateNonTemplatedHttpContext("GET", "https://google.com/path-one", nil)
 	expectations := testhttpapi.NewHTTPRequestExpectations(nil, nil, "GET", nil, "google.com", "bog-standard-reponse", nil)
-	ex := testhttpapi.NewExpectationStore()
+	ex := testhttpapi.NewExpectationStore(1)
 	ex.Put("google.com/path-one", *expectations)
 	validateContextualisedHTTPCallHeavyweight(t, requestCtx, ex)
 
@@ -61,7 +61,7 @@ func TestContextualisedHTTPSCall(t *testing.T) {
 
 	requestCtx := CreateNonTemplatedHttpContext("GET", "https://google.com/path-one", nil)
 	expectations := testhttpapi.NewHTTPRequestExpectations(nil, nil, "GET", nil, "google.com", "bog-standard-reponse", nil)
-	ex := testhttpapi.NewExpectationStore()
+	ex := testhttpapi.NewExpectationStore(1)
 	ex.Put("google.com/path-one", *expectations)
 	validateContextualisedHTTPCallHeavyweight(t, requestCtx, ex)
 }
@@ -70,7 +70,7 @@ func TestContextualisedHTTPSCallLightweight(t *testing.T) {
 
 	requestCtx := CreateNonTemplatedHttpContext("GET", "https://google.com/path-three", nil)
 	expectations := testhttpapi.NewHTTPRequestExpectations(nil, nil, "GET", nil, "google.com", "bog-standard-response", nil)
-	ex := testhttpapi.NewExpectationStore()
+	ex := testhttpapi.NewExpectationStore(1)
 	ex.Put("google.com/path-three", *expectations)
 	validateContextualisedHTTPCallLightweight(t, requestCtx, ex, nil)
 }
@@ -87,7 +87,7 @@ func TestContextualisedRewrittenHTTPSCall(t *testing.T) {
 	requestCtx.SetBody(rb)
 	expectedHeaders := http.Header{"Content-Type": []string{"application/json"}}
 	expectations := testhttpapi.NewHTTPRequestExpectations(eb, expectedHeaders, "POST", nil, "google.com", responseBody, make(http.Header))
-	ex := testhttpapi.NewExpectationStore()
+	ex := testhttpapi.NewExpectationStore(1)
 	ex.Put("google.com/create-widget", *expectations)
 	validateContextualisedHTTPCallHeavyweight(t, requestCtx, ex)
 }

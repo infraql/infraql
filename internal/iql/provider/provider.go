@@ -90,6 +90,12 @@ type IProvider interface {
 
 	InferDescribeMethod(*metadata.Resource) (*metadata.Method, string, error)
 
+	InferMaxResultsElement(*metadata.Method) *dto.HTTPElement
+
+	InferNextPageRequestElement(*metadata.Method) *dto.HTTPElement
+
+	InferNextPageResponseElement(*metadata.Method) *dto.HTTPElement
+
 	Parameterise(httpContext httpexec.IHttpContext, parameters *metadata.HttpParameters, requestSchema *metadata.Schema) (httpexec.IHttpContext, error)
 
 	SetCurrentService(serviceKey string)

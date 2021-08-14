@@ -2,50 +2,65 @@ package testhttpapi
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"path"
+	"reflect"
+	"strings"
 	"sync"
 	"testing"
-	"os"
-	"encoding/json"
-	"strings"
-	"reflect"
 
+	"infraql/internal/test/testobjects"
 	"infraql/internal/test/testutil"
+
+	log "github.com/sirupsen/logrus"
 )
 
 type HTTPRequestExpectations struct {
-	Body   io.ReadCloser
-	Header http.Header
-	Method string
-	URL    *url.URL
-	Host string
+	Body                 io.ReadCloser
+	Header               http.Header
+	Method               string
+	URL                  *url.URL
+	Host                 string
 	ResponseExpectations HTTPResponseExpectations
 }
 
 type HTTPResponseExpectations struct {
-	Body string
+	Body   string
 	Header http.Header
 }
 
 type ExpectationList struct {
-	mu sync.Mutex
+	mu  sync.Mutex
 	Pos int
-	Ex []HTTPRequestExpectations
+	Ex  []HTTPRequestExpectations
 }
 
 type ExpectationStore map[string]*ExpectationList
 
-func NewExpectationStore() ExpectationStore {
+func NewExpectationStoreNoToken() ExpectationStore {
 	return make(ExpectationStore)
 }
 
+func NewExpectationStore(tokenCalls int) ExpectationStore {
+	exStore := make(ExpectationStore)
+	host := "oauth2.googleapis.com"
+	path := "/token"
+	for i := 0; i < tokenCalls; i++ {
+		ex := NewHTTPRequestExpectations(nil, nil, "POST", &url.URL{Path: path}, host, testobjects.GoogleAuthTokenResponse, nil)
+		exStore.Put(host+path, *ex)
+	}
+	return exStore
+}
+
 func (ex ExpectationStore) Put(k string, v HTTPRequestExpectations) {
+	log.Infoln(fmt.Sprintf("inputting expectation with key = %s", k))
 	eL, ok := ex[k]
 	if ok {
 		eL.Ex = append(eL.Ex, v)
@@ -89,7 +104,6 @@ func (ex ExpectationStore) Keys() []string {
 	return rv
 }
 
-
 type SimulatedRoundTripper struct {
 	T            *testing.T
 	Expectations ExpectationStore
@@ -99,7 +113,11 @@ type SimulatedRoundTripper struct {
 
 func newSimpleTransportHandler(ex ExpectationStore) func(*http.Request) (*http.Response, error) {
 	return func(req *http.Request) (*http.Response, error) {
-		expectations, ok := ex.Get(req.Host + req.URL.Path)
+		keyStr := req.Host + req.URL.Path
+		if req.URL.RawQuery != "" {
+			keyStr = keyStr + "?" + req.URL.RawQuery
+		}
+		expectations, ok := ex.Get(keyStr)
 		err := compareHTTPRequestToExpected(req, &expectations)
 		if err != nil {
 			return nil, err
@@ -117,13 +135,18 @@ func newSimpleTransportHandler(ex ExpectationStore) func(*http.Request) (*http.R
 			Header:     responseHeader,
 			Body:       responseBody,
 			Request:    req,
-		} 
+			Status:     "200 OK",
+			StatusCode: 200,
+		}
 		return response, nil
 	}
 }
 
 func (srt SimulatedRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 	reqKey := req.Host + req.URL.Path
+	if req.URL.RawQuery != "" {
+		reqKey = reqKey + "?" + req.URL.RawQuery
+	}
 	ok := srt.Expectations.HasKey(reqKey)
 	srt.T.Logf("searching for expectations with key = '%s', found = %v", reqKey, ok)
 	if !ok && srt.Strict {
@@ -135,8 +158,8 @@ func (srt SimulatedRoundTripper) RoundTrip(req *http.Request) (*http.Response, e
 func NewURL(scheme, host, path string) *url.URL {
 	return &url.URL{
 		Scheme: scheme,
-		Host: host,
-		Path: path,
+		Host:   host,
+		Path:   path,
 	}
 }
 
@@ -155,9 +178,9 @@ func NewHTTPRequestExpectations(body io.ReadCloser, header http.Header, method s
 		Header: header,
 		Method: method,
 		URL:    url,
-		Host: host,
+		Host:   host,
 		ResponseExpectations: HTTPResponseExpectations{
-			Body: responseBody,
+			Body:   responseBody,
 			Header: reponseHeader,
 		},
 	}
@@ -168,13 +191,13 @@ func DefaultHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func getBodyMap(bodyBytes []byte, contentTypeHeader []string) (map[string]interface{}, error) {
-	retVal :=  make(map[string]interface{})
+	retVal := make(map[string]interface{})
 	var err error
 	for _, contentType := range contentTypeHeader {
 		switch contentType {
-			case "application/json":
-				err = json.Unmarshal(bodyBytes, &retVal)
-				return retVal, err
+		case "application/json":
+			err = json.Unmarshal(bodyBytes, &retVal)
+			return retVal, err
 		}
 	}
 	return nil, fmt.Errorf("could not find acceptable content type in content type header: %s", strings.Join(contentTypeHeader, ", "))
@@ -201,7 +224,7 @@ func compareHTTPBodyToExpected(req *http.Request, expectations *HTTPRequestExpec
 		if err != nil {
 			return nil, fmt.Errorf("error parsing expected body")
 		}
-		 
+
 		if !reflect.DeepEqual(actualBodyMap, expectedBodyMap) {
 			return nil, fmt.Errorf("http request body: actual != expected: '%s' != '%s'", string(actualBodyBytes), string(expectedBodyBytes))
 		}
@@ -255,7 +278,9 @@ func compareHTTPURLToExpected(actualURL *url.URL, expectations *HTTPRequestExpec
 	if err != nil {
 		return err
 	}
-	return compareExpectedStringsStrict(actualURL.RawQuery, expectations.URL.RawQuery, "RawQuery")
+	rq := actualURL.Query()
+	// rq.Del("maxResults")
+	return compareExpectedStringsStrict(rq.Encode(), expectations.URL.RawQuery, "RawQuery")
 }
 
 func compareExpectedStrings(actual string, expected string, descriptor string) error {

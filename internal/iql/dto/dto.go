@@ -29,6 +29,12 @@ const (
 	DbInitFilePathKey         string = "dbinitfilepath"
 	DelimiterKey              string = "delimiter"
 	ErrorPresentationKey      string = "errorpresentation"
+	HTTPMaxResultsKey         string = "http.response.maxResults"
+	HTTPProxyHostKey          string = "http.proxy.host"
+	HTTPProxyPasswordKey      string = "http.proxy.password"
+	HTTPProxyPortKey          string = "http.proxy.port"
+	HTTPProxySchemeKey        string = "http.proxy.scheme"
+	HTTPProxyUserKey          string = "http.proxy.user"
 	InfilePathKey             string = "infile"
 	KeyFilePathKey            string = "keyfilepath"
 	LogLevelStrKey            string = "loglevel"
@@ -54,6 +60,20 @@ type KeyVal struct {
 
 type BackendMessages struct {
 	WorkingMessages []string
+}
+
+type HTTPElementType int
+
+const (
+	QueryParam HTTPElementType = iota
+	PathParam
+	Header
+	BodyAttribute
+)
+
+type HTTPElement struct {
+	Type HTTPElementType
+	Name string
 }
 
 type AuthCtx struct {
@@ -99,6 +119,12 @@ type RuntimeCtx struct {
 	Delimiter            string
 	DryRunFlag           bool
 	ErrorPresentation    string
+	HTTPMaxResults       int
+	HTTPProxyHost        string
+	HTTPProxyPassword    string
+	HTTPProxyPort        int
+	HTTPProxyScheme      string
+	HTTPProxyUser        string
 	InfilePath           string
 	KeyFilePath          string
 	LogLevelStr          string
@@ -170,6 +196,18 @@ func (rc *RuntimeCtx) Set(key string, val string) error {
 		retVal = setBool(&rc.DryRunFlag, val)
 	case ErrorPresentationKey:
 		rc.ErrorPresentation = val
+	case HTTPMaxResultsKey:
+		retVal = setInt(&rc.HTTPMaxResults, val)
+	case HTTPProxyHostKey:
+		rc.HTTPProxyHost = val
+	case HTTPProxyPasswordKey:
+		rc.HTTPProxyPassword = val
+	case HTTPProxyPortKey:
+		retVal = setInt(&rc.HTTPProxyPort, val)
+	case HTTPProxySchemeKey:
+		rc.HTTPProxyScheme = val
+	case HTTPProxyUserKey:
+		rc.HTTPProxyUser = val
 	case InfilePathKey:
 		rc.InfilePath = val
 	case KeyFilePathKey:

@@ -324,7 +324,7 @@ func (pb *primitiveGenerator) whereComparisonExprToFilterFunc(expr *sqlparser.Co
 	}
 	colName := qualifiedName.Name.GetRawVal()
 	tableContainsKey := table.KeyExists(colName)
-	subSchema := schema.FindByPath(colName)
+	subSchema := schema.FindByPath(colName, nil)
 	if !tableContainsKey && subSchema == nil {
 		return nil, fmt.Errorf("col name = '%s' not found in resource name = '%s'", colName, table.GetName())
 	}
@@ -806,12 +806,7 @@ func (p *primitiveGenerator) analyzeSelectDetail(handlerCtx *handler.HandlerCont
 	}
 	p.PrimitiveBuilder.SetTxnCtrlCtrs(insPsc.TxnCtrlCtrs)
 	for _, col := range cols {
-		// TODO: get rid of prefix garbage
-		foundSchemaPrefixed := schema.FindByPath(colPrefix + col.Name)
-		foundSchema := schema.FindByPath(col.Name)
-		if foundSchema == nil {
-			foundSchema = foundSchemaPrefixed
-		}
+		foundSchema := schema.FindByPath(col.Name, nil)
 		cc, ok := method.Parameters[col.Name]
 		if ok && cc.ID == col.Name {
 			continue
@@ -820,7 +815,6 @@ func (p *primitiveGenerator) analyzeSelectDetail(handlerCtx *handler.HandlerCont
 			return fmt.Errorf("column = '%s' is NOT present in either:  - data returned from provider, - acceptable parameters, use the DESCRIBE command to view available fields for SELECT operations", col.Name)
 		}
 		selectTabulation.PushBackColumn(metadata.NewColumnDescriptor(col.Alias, col.Name, col.DecoratedColumn, foundSchema, col.Val))
-		log.Debugln(fmt.Sprintf("foundSchemaPrefixed = '%v'", foundSchemaPrefixed))
 		log.Infoln(fmt.Sprintf("rsc = %T", col))
 		log.Infoln(fmt.Sprintf("schema type = %T", schema))
 	}
@@ -842,8 +836,8 @@ func (p *primitiveGenerator) analyzeSelectDetail(handlerCtx *handler.HandlerCont
 			continue
 		}
 		log.Infoln(fmt.Sprintf("w = '%s'", w))
-		foundSchemaPrefixed := schema.FindByPath(colPrefix + w)
-		foundSchema := schema.FindByPath(w)
+		foundSchemaPrefixed := schema.FindByPath(colPrefix+w, nil)
+		foundSchema := schema.FindByPath(w, nil)
 		if foundSchemaPrefixed == nil && foundSchema == nil {
 			return fmt.Errorf("SELECT Where element = '%s' is NOT present in data returned from provider", w)
 		}
@@ -861,8 +855,8 @@ func (p *primitiveGenerator) analyzeSelectDetail(handlerCtx *handler.HandlerCont
 			continue
 		}
 		log.Infoln(fmt.Sprintf("w = '%s'", w))
-		foundSchemaPrefixed := schema.FindByPath(colPrefix + w)
-		foundSchema := schema.FindByPath(w)
+		foundSchemaPrefixed := schema.FindByPath(colPrefix+w, nil)
+		foundSchema := schema.FindByPath(w, nil)
 		if foundSchemaPrefixed == nil && foundSchema == nil {
 			return fmt.Errorf("SELECT HAVING element = '%s' is NOT present in data returned from provider", w)
 		}
@@ -1060,8 +1054,8 @@ func (p *primitiveGenerator) analyzeDelete(handlerCtx *handler.HandlerContext, n
 			continue
 		}
 		log.Infoln(fmt.Sprintf("w = '%s'", w))
-		foundSchemaPrefixed := schema.FindByPath(colPrefix + w)
-		foundSchema := schema.FindByPath(w)
+		foundSchemaPrefixed := schema.FindByPath(colPrefix+w, nil)
+		foundSchema := schema.FindByPath(w, nil)
 		if foundSchemaPrefixed == nil && foundSchema == nil {
 			return fmt.Errorf("DELETE Where element = '%s' is NOT present in data returned from provider", w)
 		}

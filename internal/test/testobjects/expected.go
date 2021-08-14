@@ -27,4 +27,9 @@ const (
 	ExpectedSelectComputeDisksAggSizeOrderSizeDesc                     string = "test/assets/expected/aggregated-select/google/disks/text/disks-grp-by-sizeGb-order-crt-tmstp-desc.csv"
 	ExpectedSelectComputeDisksAggSizeTotal                             string = "test/assets/expected/aggregated-select/google/disks/text/disks-sizeGb-total-sum.csv"
 	ExpectedSelectComputeDisksAggStringTotal                           string = "test/assets/expected/aggregated-select/google/disks/text/disks-total-string-agg.csv"
+	ExpectedSelectComputeDisksOrderCrtTmstpAscPaginated                string = "test/assets/expected/simple-select/google/compute/disks-paginated/text/disks-order-crt-tmstp-asc.csv"
+	ExpectedSelectComputeDisksAggPaginatedSizeOrderSizeAsc             string = "test/assets/expected/aggregated-select/google/disks-paginated/text/disks-grp-by-sizeGb-order-crt-tmstp-asc.csv"
+	ExpectedSelectComputeDisksAggPaginatedSizeOrderSizeDesc            string = "test/assets/expected/aggregated-select/google/disks-paginated/text/disks-grp-by-sizeGb-order-crt-tmstp-desc.csv"
+	ExpectedSelectComputeDisksAggPaginatedSizeTotal                    string = "test/assets/expected/aggregated-select/google/disks-paginated/text/disks-sizeGb-total-sum.csv"
+	ExpectedSelectComputeDisksAggPaginatedStringTotal                  string = "test/assets/expected/aggregated-select/google/disks-paginated/text/disks-total-string-agg.csv"
 )

@@ -29,7 +29,7 @@ func TestSimpleSelectGoogleComputeInstanceQuerySubmit(t *testing.T) {
 		Path: path,
 	}
 	ex := testhttpapi.NewHTTPRequestExpectations(nil, nil, "GET", url, testobjects.GoogleComputeHost, testobjects.SimpleSelectGoogleComputeInstanceResponse, nil)
-	exp := testhttpapi.NewExpectationStore()
+	exp := testhttpapi.NewExpectationStore(1)
 	exp.Put(testobjects.GoogleComputeHost+path, *ex)
 
 	testhttpapi.StartServer(t, exp)

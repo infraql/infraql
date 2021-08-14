@@ -486,7 +486,6 @@ func (pb *primitiveGenerator) deleteExecutor(handlerCtx *handler.HandlerContext,
 		return nil, err
 	}
 	ex := func(pc plan.IPrimitiveCtx) dto.ExecutorOutput {
-		var err error
 		response, apiErr := httpmiddleware.HttpApiCall(*handlerCtx, prov, tbl.HttpArmoury.Context)
 		if apiErr != nil {
 			return util.PrepareResultSet(dto.NewPrepareResultSetDTO(nil, nil, nil, nil, apiErr, nil))

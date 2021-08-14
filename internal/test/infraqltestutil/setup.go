@@ -22,7 +22,7 @@ func SetupSimpleSelectGoogleComputeInstance(t *testing.T) {
 		Path: path,
 	}
 	ex := testhttpapi.NewHTTPRequestExpectations(nil, nil, "GET", url, testobjects.GoogleComputeHost, testobjects.SimpleSelectGoogleComputeInstanceResponse, nil)
-	expectations := testhttpapi.NewExpectationStore()
+	expectations := testhttpapi.NewExpectationStore(1)
 	expectations.Put(testobjects.GoogleComputeHost+path, *ex)
 	testhttpapi.StartServer(t, expectations)
 	provider.DummyAuth = true
@@ -42,8 +42,66 @@ func SetupSimpleSelectGoogleComputeDisks(t *testing.T) {
 		t.Fatalf("%v", err)
 	}
 	ex := testhttpapi.NewHTTPRequestExpectations(nil, nil, "GET", url, testobjects.GoogleComputeHost, string(responseBytes), nil)
-	expectations := testhttpapi.NewExpectationStore()
+	expectations := testhttpapi.NewExpectationStore(1)
 	expectations.Put(testobjects.GoogleComputeHost+path, *ex)
+	testhttpapi.StartServer(t, expectations)
+	provider.DummyAuth = true
+}
+
+func SetupSimpleSelectGoogleComputeDisksPaginated(t *testing.T) {
+	path := "/compute/v1/projects/testing-project/zones/australia-southeast1-b/disks"
+
+	rawQuery1 := "maxResults=5"
+	url1 := &url.URL{
+		Path:     path,
+		RawQuery: rawQuery1,
+	}
+	responseFile1, err := util.GetFilePathFromRepositoryRoot(testobjects.SimpleGoogleComputeDisksListResponsePaginated5Page1File)
+	if err != nil {
+		t.Fatalf("Test failed: %v", err)
+	}
+	responseBytes1, err := ioutil.ReadFile(responseFile1)
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+
+	rawQuery2 := "maxResults=5&pageToken=Cg1jMi1zdGFuZGFyZC04"
+	url2 := &url.URL{
+		Path:     path,
+		RawQuery: rawQuery2,
+	}
+	responseFile2, err := util.GetFilePathFromRepositoryRoot(testobjects.SimpleGoogleComputeDisksListResponsePaginated5Page2File)
+	if err != nil {
+		t.Fatalf("Test failed: %v", err)
+	}
+	responseBytes2, err := ioutil.ReadFile(responseFile2)
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+
+	rawQuery3 := "maxResults=5&pageToken=Cg1jMi1zdGFuZGFyZC03"
+	url3 := &url.URL{
+		Path:     path,
+		RawQuery: rawQuery3,
+	}
+	responseFile3, err := util.GetFilePathFromRepositoryRoot(testobjects.SimpleGoogleComputeDisksListResponsePaginated5Page3File)
+	if err != nil {
+		t.Fatalf("Test failed: %v", err)
+	}
+	responseBytes3, err := ioutil.ReadFile(responseFile3)
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+
+	ex1 := testhttpapi.NewHTTPRequestExpectations(nil, nil, "GET", url1, testobjects.GoogleComputeHost, string(responseBytes1), nil)
+	ex2 := testhttpapi.NewHTTPRequestExpectations(nil, nil, "GET", url2, testobjects.GoogleComputeHost, string(responseBytes2), nil)
+	ex3 := testhttpapi.NewHTTPRequestExpectations(nil, nil, "GET", url3, testobjects.GoogleComputeHost, string(responseBytes3), nil)
+
+	expectations := testhttpapi.NewExpectationStore(3)
+	expectations.Put(testobjects.GoogleComputeHost+path+"?"+rawQuery1, *ex1)
+	expectations.Put(testobjects.GoogleComputeHost+path+"?"+rawQuery2, *ex2)
+	expectations.Put(testobjects.GoogleComputeHost+path+"?"+rawQuery3, *ex3)
+
 	testhttpapi.StartServer(t, expectations)
 	provider.DummyAuth = true
 }
@@ -54,7 +112,7 @@ func SetupSimpleSelectGoogleContainerAggAllowedSubnetworks(t *testing.T) {
 		Path: path,
 	}
 	ex := testhttpapi.NewHTTPRequestExpectations(nil, nil, "GET", url, testobjects.GoogleContainerHost, testobjects.SimpleSelectGoogleContainerAggregatedSubnetworksResponse, nil)
-	expectations := testhttpapi.NewExpectationStore()
+	expectations := testhttpapi.NewExpectationStore(1)
 	expectations.Put(testobjects.GoogleContainerHost+path, *ex)
 	testhttpapi.StartServer(t, expectations)
 	provider.DummyAuth = true
@@ -294,7 +352,7 @@ func getNetworkDeleteSuccessExpectations() map[string]testhttpapi.HTTPRequestExp
 
 func SetupSimpleInsertGoogleComputeNetworks(t *testing.T) {
 
-	expectations := testhttpapi.NewExpectationStore()
+	expectations := testhttpapi.NewExpectationStore(3)
 	for k, v := range getNetworkInsertSuccessExpectations() {
 		expectations.Put(k, v)
 	}
@@ -305,7 +363,7 @@ func SetupSimpleInsertGoogleComputeNetworks(t *testing.T) {
 
 func SetupSimpleDeleteGoogleComputeNetworks(t *testing.T) {
 
-	expectations := testhttpapi.NewExpectationStore()
+	expectations := testhttpapi.NewExpectationStore(3)
 	for k, v := range getNetworkDeleteSuccessExpectations() {
 		expectations.Put(k, v)
 	}
@@ -319,7 +377,7 @@ func SetupK8sTheHardWayE2eSuccess(t *testing.T) {
 	computeControllerInstanceCount := 3
 	computeWorkerInstanceCount := 3
 
-	expectations := testhttpapi.NewExpectationStore()
+	expectations := testhttpapi.NewExpectationStore(30)
 	for k, v := range getNetworkInsertSuccessExpectations() {
 		expectations.Put(k, v)
 	}

@@ -76,7 +76,7 @@ func SplitHttpParameters(sqlParamMap map[string]interface{}, method *Method, req
 				}
 			}
 		}
-		if responseSchema != nil && responseSchema.FindByPath(k) != nil {
+		if responseSchema != nil && responseSchema.FindByPath(k, nil) != nil {
 			retVal.ResponseBody[k] = v
 		}
 

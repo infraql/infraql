@@ -8,6 +8,7 @@ import (
 	"infraql/internal/iql/dto"
 	"infraql/internal/iql/googlediscovery"
 	"infraql/internal/iql/metadata"
+	"infraql/internal/iql/netutils"
 	"infraql/internal/iql/sqlengine"
 	"io"
 	"io/ioutil"
@@ -15,7 +16,6 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"time"
 
 	log "github.com/sirupsen/logrus"
 )
@@ -168,9 +168,7 @@ func NewTTLDiscoveryStore(dbEngine sqlengine.SQLEngine, runtimeCtx dto.RuntimeCt
 }
 
 func DownloadDiscoveryDoc(url string, runtimeCtx dto.RuntimeCtx) (io.ReadCloser, error) {
-	httpClient := http.Client{
-		Timeout: time.Second * time.Duration(runtimeCtx.APIRequestTimeout),
-	}
+	httpClient := netutils.GetHttpClient(runtimeCtx, nil)
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
@@ -204,9 +202,10 @@ func processDiscoveryDoc(url string, cacheDir string, fileMode os.FileMode, runt
 	if err != nil {
 		return nil, err
 	}
-	if body != nil {
-		defer body.Close()
+	if body == nil {
+		return nil, fmt.Errorf("error downloading discovery document.  Hint: check network settings, proxy config.")
 	}
+	defer body.Close()
 	bodyBytes, readErr := ioutil.ReadAll(body)
 	if readErr != nil {
 		return nil, readErr
