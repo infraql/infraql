@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,6 +14,7 @@ import (
 	"infraql/internal/iql/iqlmodel"
 	"infraql/internal/iql/metadata"
 	"infraql/internal/iql/methodselect"
+	"infraql/internal/iql/netutils"
 	"infraql/internal/iql/relational"
 	"infraql/internal/iql/sqlengine"
 	"infraql/internal/iql/sqltypeutil"
@@ -248,7 +250,6 @@ func (gp *GoogleProvider) ShowAuth(authCtx *dto.AuthCtx) (*metadata.AuthMetadata
 func (gp *GoogleProvider) oAuth(authCtx *dto.AuthCtx, enforceRevokeFirst bool) (*http.Client, error) {
 	var err error
 	var tokenBytes []byte
-	var client *http.Client
 	tokenBytes, err = sdk.GetAccessToken()
 	if enforceRevokeFirst && authCtx.Type == dto.AuthInteractiveStr && err == nil {
 		return nil, fmt.Errorf(constants.OAuthInteractiveAuthErrStr)
@@ -259,16 +260,16 @@ func (gp *GoogleProvider) oAuth(authCtx *dto.AuthCtx, enforceRevokeFirst bool) (
 			tokenBytes, err = sdk.GetAccessToken()
 		}
 	}
-	if err == nil {
-		activateAuth(authCtx, "", dto.AuthInteractiveStr)
-		client = &http.Client{
-			Transport: &transport{
-				token:               tokenBytes,
-				underlyingTransport: http.DefaultTransport,
-			},
-		}
+	if err != nil {
+		return nil, err
 	}
-	return client, err
+	activateAuth(authCtx, "", dto.AuthInteractiveStr)
+	client := netutils.GetHttpClient(gp.runtimeCtx, nil)
+	client.Transport = &transport{
+		token:               tokenBytes,
+		underlyingTransport: client.Transport,
+	}
+	return client, nil
 }
 
 func (gp *GoogleProvider) keyFileAuth(authCtx *dto.AuthCtx) (*http.Client, error) {
@@ -278,7 +279,7 @@ func (gp *GoogleProvider) keyFileAuth(authCtx *dto.AuthCtx) (*http.Client, error
 			"https://www.googleapis.com/auth/cloud-platform",
 		}
 	}
-	return serviceAccount(authCtx, scopes)
+	return serviceAccount(authCtx, scopes, gp.runtimeCtx)
 }
 
 func (gp *GoogleProvider) getServiceType(service metadata.Service) string {
@@ -503,7 +504,7 @@ func (gp *GoogleProvider) CheckServiceAccountFile(credentialFile string) error {
 	return err
 }
 
-func serviceAccount(authCtx *dto.AuthCtx, scopes []string) (*http.Client, error) {
+func serviceAccount(authCtx *dto.AuthCtx, scopes []string, runtimeCtx dto.RuntimeCtx) (*http.Client, error) {
 	credentialFile := authCtx.KeyFilePath
 	b, err := ioutil.ReadFile(credentialFile)
 	if err != nil {
@@ -514,10 +515,11 @@ func serviceAccount(authCtx *dto.AuthCtx, scopes []string) (*http.Client, error)
 		return nil, errToken
 	}
 	activateAuth(authCtx, "", dto.AuthServiceAccountStr)
+	httpClient := netutils.GetHttpClient(runtimeCtx, http.DefaultClient)
 	if DummyAuth {
-		return http.DefaultClient, nil
+		// return httpClient, nil
 	}
-	return config.Client(oauth2.NoContext), nil
+	return config.Client(context.WithValue(oauth2.NoContext, oauth2.HTTPClient, httpClient)), nil
 }
 
 func (gp *GoogleProvider) GenerateHTTPRestInstruction(httpContext httpexec.IHttpContext) (httpexec.IHttpContext, error) {
@@ -595,4 +597,25 @@ func (gp *GoogleProvider) GetResource(serviceKey string, resourceKey string, run
 
 func (gp *GoogleProvider) GetProviderString() string {
 	return googleProviderName
+}
+
+func (gp *GoogleProvider) InferMaxResultsElement(*metadata.Method) *dto.HTTPElement {
+	return &dto.HTTPElement{
+		Type: dto.QueryParam,
+		Name: "maxResults",
+	}
+}
+
+func (gp *GoogleProvider) InferNextPageRequestElement(*metadata.Method) *dto.HTTPElement {
+	return &dto.HTTPElement{
+		Type: dto.QueryParam,
+		Name: "pageToken",
+	}
+}
+
+func (gp *GoogleProvider) InferNextPageResponseElement(*metadata.Method) *dto.HTTPElement {
+	return &dto.HTTPElement{
+		Type: dto.BodyAttribute,
+		Name: "nextPageToken",
+	}
 }

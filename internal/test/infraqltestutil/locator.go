@@ -26,6 +26,7 @@ func GetRuntimeCtx(providerStr string, outputFmtStr string) (*dto.RuntimeCtx, er
 	return &dto.RuntimeCtx{
 		Delimiter:        ",",
 		ProviderStr:      providerStr,
+		LogLevelStr:      "warn",
 		KeyFilePath:      saKeyPath,
 		ProviderRootPath: providerDir,
 		OutputFormat:     outputFmtStr,

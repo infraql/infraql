@@ -606,35 +606,54 @@ func (s *Schema) Unmarshal() error {
 	return nil
 }
 
-func (s *Schema) FindByPath(path string) *Schema {
+func (s *Schema) FindByPath(path string, visited map[string]bool) *Schema {
+	if visited == nil {
+		visited = make(map[string]bool)
+	}
+	log.Infoln(fmt.Sprintf("FindByPath() called with path = '%s'", path))
 	if s.Path == path {
 		return s
 	}
 	remainingPath := strings.TrimPrefix(path, s.Path)
 	for k, v := range s.Properties {
+		if v.NamedRef != "" {
+			isVis, ok := visited[v.NamedRef]
+			if isVis && ok {
+				continue
+			}
+			visited[v.NamedRef] = true
+		}
+		log.Infoln(fmt.Sprintf("FindByPath() attempting to match  path = '%s' with property '%s', visited = %v", path, k, visited))
 		if k == path {
 			rv, _ := v.GetSchema(s.SchemaCentral)
 			return rv
 		}
 		ss, _ := v.GetSchema(s.SchemaCentral)
 		if ss != nil {
-			res := ss.FindByPath(path)
+			res := ss.FindByPath(path, visited)
 			if res != nil {
 				return res
 			}
-			resRem := ss.FindByPath(remainingPath)
+			resRem := ss.FindByPath(remainingPath, visited)
 			if resRem != nil {
 				return resRem
 			}
 		}
 	}
+	if s.Items.NamedRef != "" {
+		isVis, ok := visited[s.Items.NamedRef]
+		if isVis && ok {
+			return nil
+		}
+		visited[s.Items.NamedRef] = true
+	}
 	ss, _ := s.Items.GetSchema(s.SchemaCentral)
 	if ss != nil {
-		res := ss.FindByPath(path)
+		res := ss.FindByPath(path, visited)
 		if res != nil {
 			return res
 		}
-		resRem := ss.FindByPath(remainingPath)
+		resRem := ss.FindByPath(remainingPath, visited)
 		if resRem != nil {
 			return resRem
 		}

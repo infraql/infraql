@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"infraql/internal/iql/dto"
+	"infraql/internal/iql/resultutil"
 	"infraql/internal/iql/util"
 	"io/ioutil"
 	"strings"
@@ -423,7 +424,7 @@ func prepareResultSet(payload *SQLEnginePayload, rows *sql.Rows) dto.ExecutorOut
 		if err := rows.Scan(svs...); err != nil {
 			return dto.NewExecutorOutput(nil, nil, nil, err)
 		}
-		res.Rows = append(res.Rows, transformRow(svs))
+		res.Rows = append(res.Rows, resultutil.TransformRow(svs))
 		// fmt.Printf("dept=%d stddev=%f\n", dept, dev)
 	}
 	if err := rows.Err(); err != nil {
@@ -433,15 +434,6 @@ func prepareResultSet(payload *SQLEnginePayload, rows *sql.Rows) dto.ExecutorOut
 	return dto.ExecutorOutput{
 		Result: res,
 	}
-}
-
-func transformRow(row []interface{}) []sqltypes.Value {
-	rowVals := make([]sqltypes.Value, len(row))
-	for j := range row {
-		rvj, _ := sqltypes.NewValue(querypb.Type_TEXT, util.InterfaceToBytes(row[j], false))
-		rowVals[j] = rvj
-	}
-	return rowVals
 }
 
 func singleColRowsToString(rows *sql.Rows) (string, error) {

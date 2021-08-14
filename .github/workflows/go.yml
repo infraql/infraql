@@ -56,7 +56,7 @@ jobs:
         if("$env:BUILDBRANCH".EndsWith('develop')) {
           $BuildPatchVersion = $env:BUILDPATCHVERSION
         }else {
-          $BuildPatchVersion = $env:BUILDPATCHVERSION + "-prerelease"
+          $BuildPatchVersion = $env:BUILDPATCHVERSION
         }
         $BuildCommitSHA = $env:BUILDCOMMITSHA
         $BuildShortCommitSHA = "$BuildCommitSHA".Substring(0,6)
@@ -136,7 +136,7 @@ jobs:
         BUILDMINORVERSION=$MinorVersion
         if [[ ! "$BUILDBRANCH" == *develop ]]
           then
-          BUILDPATCHVERSION="${BUILDPATCHVERSION}-prerelease"
+          BUILDPATCHVERSION="${BUILDPATCHVERSION}"
         fi
         BUILDSHORTCOMMITSHA=$(echo $BUILDCOMMITSHA | cut -c 1-7)
         BUILDDATE=$(date)
@@ -211,7 +211,7 @@ jobs:
         BUILDMINORVERSION=$MinorVersion
         if [[ ! "$BUILDBRANCH" == *develop ]]
           then
-          BUILDPATCHVERSION="${BUILDPATCHVERSION}-prerelease"
+          BUILDPATCHVERSION="${BUILDPATCHVERSION}"
         fi
         BUILDSHORTCOMMITSHA=$(echo $BUILDCOMMITSHA | cut -c 1-7)
         BUILDDATE=$(date)

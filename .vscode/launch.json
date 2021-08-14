@@ -95,9 +95,25 @@
       "args": [
         "exec",
         "--keyfilepath=${workspaceFolder}/keys/sa-key.json",
+        "--http.proxy.host=localhost", "--http.proxy.port=22",
         "select name, region from google.compute.subnetworks where region = 'australia-southeast1' AND /* */ project = 'lab-kr-network-01';",
         // "select * from compute.instances WHERE `google.compute.project` = 'lab-kr-network-01' ;",
         // "select canIpForward from compute.instances WHERE zone = 2 AND project = 'lab-kr-network-01' ;",
+        "-o",
+        "json"
+      ],
+    },
+    // DELETE FROM google.bigquery.datasets WHERE projectId='lab-kr-network-01' and datasetId='DEMO_DATASET';
+    {
+      "name": "Intractible \"SELECT BQ jobs ... ;\" -- prebuilt with cmake",
+      "type": "go",
+      "request": "launch",
+      "mode": "exec",
+      "program": "${workspaceFolder}/build/infraql",
+      "args": [
+        "exec",
+        "--keyfilepath=${workspaceFolder}/keys/sa-key.json",
+        "select * from google.bigquery.jobs where projectId='lab-kr-network-01';",
         "-o",
         "json"
       ],
@@ -138,7 +154,7 @@
       ],
     },
     {
-      "name": "Launch exec \"SELECT compute.networks ... ;\" -- prebuilt with cmake",
+      "name": "Launch exec \"SELECT compute.machineTypes ... ;\" -- prebuilt with cmake",
       "type": "go",
       "request": "launch",
       "mode": "exec",
@@ -146,7 +162,7 @@
       "args": [
         "exec",
         "--keyfilepath=${workspaceFolder}/keys/sa-key.json",
-        "select id, name, description from compute.networks WHERE project = 'lab-kr-network-01';",
+        "select name from google.compute.machineTypes WHERE project = 'lab-kr-network-01' and zone = 'australia-southeast1-b';",
         "-o",
         "json"
       ],

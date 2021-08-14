@@ -27,12 +27,12 @@ func TestSimpleSelectGoogleComputeInstance(t *testing.T) {
 		Path: path,
 	}
 	ex := testhttpapi.NewHTTPRequestExpectations(nil, nil, "GET", url, "compute.googleapis.com", testobjects.SimpleSelectGoogleComputeInstanceResponse, nil)
-	exp := testhttpapi.NewExpectationStore()
+	exp := testhttpapi.NewExpectationStore(1)
 	exp.Put("compute.googleapis.com"+path, *ex)
 	testhttpapi.StartServer(t, exp)
 	provider.DummyAuth = true
 	args := []string{
-		"--loglevel=info",
+		"--loglevel=warn",
 		fmt.Sprintf("--keyfilepath=%s", runtimeCtx.KeyFilePath),
 		fmt.Sprintf("--providerroot=%s", runtimeCtx.ProviderRootPath),
 		fmt.Sprintf("--dbfilepath=%s", runtimeCtx.DbFilePath),

@@ -133,22 +133,31 @@ const (
 		]
 	}
 	`
-	SimpleGoogleComputeDisksListResponseFile    string = "test/assets/response/google/compute/disks/disks-list.json"
-	GoogleContainerHost                         string = "container.googleapis.com"
-	GoogleComputeHost                           string = "compute.googleapis.com"
-	GoogleProjectDefault                        string = "infraql-demo"
-	NetworkInsertPath                           string = "/compute/v1/projects/infraql-demo/global/networks"
-	networkDeletePath                           string = "/compute/v1/projects/%s/global/networks/%s"
-	NetworkInsertURL                            string = "https://" + GoogleComputeHost + NetworkInsertPath
-	SubnetworkInsertPath                        string = "/compute/v1/projects/infraql-demo/regions/australia-southeast1/subnetworks"
-	IPInsertPath                                string = "/compute/v1/projects/infraql-demo/regions/australia-southeast1/addresses"
-	FirewallInsertPath                          string = "/compute/v1/projects/infraql-demo/global/firewalls"
-	ComputeInstanceInsertPath                   string = "/compute/v1/projects/infraql-demo/zones/australia-southeast1-a/instances"
-	SubnetworkInsertURL                         string = "https://" + GoogleComputeHost + NetworkInsertPath
-	GoogleApisHost                              string = "www.googleapis.com"
-	GoogleComputeInsertOperationPath            string = "/compute/v1/projects/infraql-demo/global/operations/operation-xxxxx-yyyyy-0001"
-	GoogleComputeInsertOperationURL             string = "https://" + GoogleApisHost + GoogleComputeInsertOperationPath
-	simpleGoogleComputeOperationInitialResponse string = `
+	GoogleAuthTokenResponse string = `{
+		"access_token": "some-access-token",
+		"token_type": "access_token",
+		"id_token": "eyJhbGciOiJSUzI1NiIsImN0eSI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwiaWF0IjoxNjAzMzc2MDExLCJleHAiOjExNjI4NTY1MzY0LCJhdWQiOiJhdWQteCIsImlzcyI6Imdvb2dsZSIsInNjb3BlIjoiZ29vZ2xlYXBpcyJ9.g_MHGMGbRt0MZaOyKPA7zQNrYRDgabBJwEzUGlCHlWlidWnYSG9mo5YixHwk1AfeDsRTnxxyT9Ki1mSppamKbS_QHj-o54PMLibP6jcQV4aLxwug9cKbzIvQTndWPm41gBT4Bxfip4ZI9DZUtVZ4nv89reDdmZ_WLG_HuDw-3p4E5L_5iIJGGEnfyko8Da1LiHZg6tNGzpmMyjxUhocvUdM5iEHeppkLlGlu9Lw38UVxUCvskKy6WRCnLU7uCZxeoA-Ah8jg-Ie6IPdKm2UvqUflQbfG-Ga7LqzMxSVE_KvRD9_02mYZykjuWQiEAWqMYnBqK4TtoFfAZLTa1cFGvQ",
+		"expires_in": 3600 
+	}`
+	SimpleGoogleComputeDisksListResponseFile                string = "test/assets/response/google/compute/disks/disks-list.json"
+	SimpleGoogleComputeDisksListResponsePaginated5Page1File string = "test/assets/response/google/compute/disks/disks-list-paginated-5-max-page-01.json"
+	SimpleGoogleComputeDisksListResponsePaginated5Page2File string = "test/assets/response/google/compute/disks/disks-list-paginated-5-max-page-02.json"
+	SimpleGoogleComputeDisksListResponsePaginated5Page3File string = "test/assets/response/google/compute/disks/disks-list-paginated-5-max-page-03.json"
+	GoogleContainerHost                                     string = "container.googleapis.com"
+	GoogleComputeHost                                       string = "compute.googleapis.com"
+	GoogleProjectDefault                                    string = "infraql-demo"
+	NetworkInsertPath                                       string = "/compute/v1/projects/infraql-demo/global/networks"
+	networkDeletePath                                       string = "/compute/v1/projects/%s/global/networks/%s"
+	NetworkInsertURL                                        string = "https://" + GoogleComputeHost + NetworkInsertPath
+	SubnetworkInsertPath                                    string = "/compute/v1/projects/infraql-demo/regions/australia-southeast1/subnetworks"
+	IPInsertPath                                            string = "/compute/v1/projects/infraql-demo/regions/australia-southeast1/addresses"
+	FirewallInsertPath                                      string = "/compute/v1/projects/infraql-demo/global/firewalls"
+	ComputeInstanceInsertPath                               string = "/compute/v1/projects/infraql-demo/zones/australia-southeast1-a/instances"
+	SubnetworkInsertURL                                     string = "https://" + GoogleComputeHost + NetworkInsertPath
+	GoogleApisHost                                          string = "www.googleapis.com"
+	GoogleComputeInsertOperationPath                        string = "/compute/v1/projects/infraql-demo/global/operations/operation-xxxxx-yyyyy-0001"
+	GoogleComputeInsertOperationURL                         string = "https://" + GoogleApisHost + GoogleComputeInsertOperationPath
+	simpleGoogleComputeOperationInitialResponse             string = `
 	{
 		"id": "8485551673440766140",
 		"name": "operation-xxxxx-yyyyy-0001",
