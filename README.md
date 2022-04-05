@@ -4,12 +4,13 @@
 ![Go](https://github.com/infraql/infraql/workflows/Go/badge.svg)
 ![License](https://img.shields.io/github/license/infraql/infraql)
 ![Lines](https://img.shields.io/tokei/lines/github/infraql/infraql)  
-[![InfraQL](https://docs.infraql.io/img/infraql-banner.png)](https://infraql.io/)  
-
+[![StackQL](https://stackql.io/img/stackql-banner.png)](https://stackql.io/)  
 
 # Deploy, Manage and Query Cloud Infrastructure using SQL
 
-[[Documentation](https://docs.infraql.io/)]  [[Developer Guide](https://github.com/infraql/infraql/blob/develop/developer_guide.md)]
+> <font color="red">__*This repository has been archived.  The active project is now located at [StackQL](https://github.com/stackql/stackql)*__</font>
+
+[[Documentation](https://stackql.io/docs)]  [[Developer Guide](https://github.com/infraql/infraql/blob/develop/developer_guide.md)]
 
 ## Cloud infrastructure coding using SQL
 
