@@ -8,7 +8,7 @@
 
 # Deploy, Manage and Query Cloud Infrastructure using SQL
 
-> <font color="red">__*This repository has been archived.  The active project is now located at [StackQL](https://github.com/stackql/stackql)*__</font>
+> __*This repository has been archived.  The active project is now located at [StackQL](https://github.com/stackql/stackql)*__
 
 [[Documentation](https://stackql.io/docs)]  [[Developer Guide](https://github.com/infraql/infraql/blob/develop/developer_guide.md)]
 
